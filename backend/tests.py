@@ -1,12 +1,14 @@
 from fastapi.testclient import TestClient
 from backend.main import app
 from backend.database import Base, engine
+import pytest
 
 # Create the test client
 client = TestClient(app)
 
 def setup_module(module):
     """ setup any state specific to the execution of the given module."""
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
 def test_read_main():
