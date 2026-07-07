@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+*.db
+venv/
+env/
+.env
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.npm/
+
+# Vite
+*.local
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
