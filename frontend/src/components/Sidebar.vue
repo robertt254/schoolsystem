@@ -1,11 +1,12 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useAuthStore } from '../stores/auth';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import ChangePasswordModal from './ChangePasswordModal.vue';
 
 const authStore = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const showPasswordModal = ref(false);
 
 const logout = () => {
@@ -14,51 +15,92 @@ const logout = () => {
 };
 
 const linkClass = "block px-4 py-2 rounded transition-colors hover:bg-navy-light hover:text-red-accent";
+const subLinkClass = "block pl-8 pr-4 py-2 rounded text-sm transition-colors hover:bg-navy-light hover:text-red-accent";
 const activeClass = "bg-navy-light text-red-accent border-l-4 border-red-accent";
-const sectionClass = "px-4 pt-4 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400";
+
+// Module groups — collapsed by default, the group of the current page opens
+const groups = computed(() => [
+    {
+        key: 'academics', label: 'Academics', show: true,
+        links: [
+            { to: '/students', label: 'Students' },
+            { to: '/classes', label: 'Classes' },
+            { to: '/attendance', label: 'Attendance' },
+            { to: '/courses', label: 'Courses' },
+            { to: '/exams', label: 'Exams' },
+            { to: '/report-cards', label: 'Report Cards' },
+            { to: '/timetable', label: 'Timetable' },
+            { to: '/discipline', label: 'Discipline' },
+        ]
+    },
+    {
+        key: 'finance', label: 'Finance', show: authStore.canFinance,
+        links: [
+            { to: '/finance', label: 'Finance Dashboard' },
+            { to: '/defaulters', label: 'Defaulters' },
+            { to: '/fee-statement', label: 'Fee Statement' },
+            { to: '/fee-structure', label: 'Fee Structure' },
+            { to: '/payroll', label: 'Payroll' },
+            { to: '/expenses', label: 'Expenses' },
+            { to: '/budgets', label: 'Budgets' },
+        ]
+    },
+    {
+        key: 'people', label: 'People & HR', show: true,
+        links: [
+            ...(authStore.isAdmin || authStore.isFinance ? [{ to: '/teachers', label: 'Staff & HR' }] : []),
+            { to: '/leave', label: 'Leave' },
+            { to: '/library', label: 'Library' },
+            { to: '/events', label: 'Events' },
+            ...(authStore.canComms ? [{ to: '/sms', label: 'SMS' }] : []),
+        ]
+    },
+    {
+        key: 'system', label: 'System', show: authStore.isAdmin,
+        links: [
+            { to: '/reports', label: 'Reports' },
+            { to: '/admin', label: 'Admin Tools' },
+        ]
+    },
+]);
+
+// Open the group that contains the page the user is on
+const initialOpen = () => {
+    for (const g of groups.value) {
+        if (g.links.some(l => route.path.startsWith(l.to))) return g.key;
+    }
+    return null;
+};
+const openGroup = ref(initialOpen());
+const toggle = (key) => {
+    openGroup.value = openGroup.value === key ? null : key;
+};
 </script>
 
 <template>
   <aside class="w-64 bg-navy text-white flex flex-col shadow-lg flex-shrink-0 min-h-screen">
     <div class="p-6 border-b border-navy-light">
-      <h1 class="text-2xl font-bold text-red-accent">School System</h1>
+      <h1 class="text-2xl font-bold text-red-accent">BONA SCHOOL</h1>
+      <p class="text-xs uppercase tracking-widest text-gray-400">Kenya</p>
       <p v-if="authStore.user" class="text-sm mt-2 text-gray-300">Welcome, {{ authStore.user.name || authStore.user.username }}</p>
     </div>
     <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
       <router-link to="/" :class="linkClass" :active-class="activeClass">Dashboard</router-link>
 
-      <p :class="sectionClass">Academics</p>
-      <router-link to="/students" :class="linkClass" :active-class="activeClass">Students</router-link>
-      <router-link to="/classes" :class="linkClass" :active-class="activeClass">Classes</router-link>
-      <router-link to="/attendance" :class="linkClass" :active-class="activeClass">Attendance</router-link>
-      <router-link to="/courses" :class="linkClass" :active-class="activeClass">Courses</router-link>
-      <router-link to="/exams" :class="linkClass" :active-class="activeClass">Exams</router-link>
-      <router-link to="/report-cards" :class="linkClass" :active-class="activeClass">Report Cards</router-link>
-      <router-link to="/timetable" :class="linkClass" :active-class="activeClass">Timetable</router-link>
-      <router-link to="/discipline" :class="linkClass" :active-class="activeClass">Discipline</router-link>
-
-      <template v-if="authStore.canFinance">
-        <p :class="sectionClass">Finance</p>
-        <router-link to="/finance" :class="linkClass" :active-class="activeClass">Finance</router-link>
-        <router-link to="/defaulters" :class="linkClass" :active-class="activeClass">Defaulters</router-link>
-        <router-link to="/fee-statement" :class="linkClass" :active-class="activeClass">Fee Statement</router-link>
-        <router-link to="/fee-structure" :class="linkClass" :active-class="activeClass">Fee Structure</router-link>
-        <router-link to="/payroll" :class="linkClass" :active-class="activeClass">Payroll</router-link>
-        <router-link to="/expenses" :class="linkClass" :active-class="activeClass">Expenses</router-link>
-        <router-link to="/budgets" :class="linkClass" :active-class="activeClass">Budgets</router-link>
-      </template>
-
-      <p :class="sectionClass">People & Office</p>
-      <router-link v-if="authStore.isAdmin || authStore.isFinance" to="/teachers" :class="linkClass" :active-class="activeClass">Staff & HR</router-link>
-      <router-link to="/leave" :class="linkClass" :active-class="activeClass">Leave</router-link>
-      <router-link to="/library" :class="linkClass" :active-class="activeClass">Library</router-link>
-      <router-link to="/events" :class="linkClass" :active-class="activeClass">Events</router-link>
-      <router-link v-if="authStore.canComms" to="/sms" :class="linkClass" :active-class="activeClass">SMS</router-link>
-
-      <template v-if="authStore.isAdmin">
-        <p :class="sectionClass">System</p>
-        <router-link to="/reports" :class="linkClass" :active-class="activeClass">Reports</router-link>
-        <router-link to="/admin" :class="linkClass" :active-class="activeClass">Admin Tools</router-link>
+      <template v-for="g in groups" :key="g.key">
+        <div v-if="g.show && g.links.length">
+          <button @click="toggle(g.key)"
+                  class="w-full flex justify-between items-center px-4 py-2 rounded transition-colors hover:bg-navy-light hover:text-red-accent"
+                  :class="openGroup === g.key ? 'text-red-accent' : 'text-white'">
+            <span class="font-semibold">{{ g.label }}</span>
+            <span class="text-xs transition-transform" :class="openGroup === g.key ? 'rotate-180' : ''">▼</span>
+          </button>
+          <div v-show="openGroup === g.key" class="mt-1 space-y-1">
+            <router-link v-for="l in g.links" :key="l.to" :to="l.to" :class="subLinkClass" :active-class="activeClass">
+              {{ l.label }}
+            </router-link>
+          </div>
+        </div>
       </template>
     </nav>
     <div class="p-4 border-t border-navy-light">

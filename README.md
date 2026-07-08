@@ -1,8 +1,8 @@
-# CBC School Management System
+# Bona School Kenya — School Management System
 
-Full-stack school management system for Kenyan CBC schools. FastAPI + PostgreSQL
-backend, Vue 3 + Tailwind frontend. In production a single Docker container
-serves both the API and the compiled SPA.
+Full-stack CBC school management system for Bona School Kenya. FastAPI +
+PostgreSQL backend, Vue 3 + Tailwind frontend. In production a single Docker
+container serves both the API and the compiled SPA.
 
 ## Features
 

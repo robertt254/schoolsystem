@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Absolute path to the Vue build output — works regardless of CWD
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
 
-app = FastAPI(title="CBC School Management System API")
+app = FastAPI(title="Bona School Kenya Management API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

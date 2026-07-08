@@ -52,8 +52,8 @@ onMounted(load);
   <div class="p-8 max-w-7xl mx-auto space-y-8">
     <div class="flex justify-between items-center">
       <div>
-        <h1 class="text-3xl font-bold text-navy">School Dashboard</h1>
-        <p class="text-gray-700 mt-1">Welcome to the school management system.</p>
+        <h1 class="text-3xl font-bold text-navy">Bona School Kenya — Dashboard</h1>
+        <p class="text-gray-700 mt-1">Welcome to the Bona School management system.</p>
       </div>
       <span class="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">{{ currentTerm }}</span>
     </div>

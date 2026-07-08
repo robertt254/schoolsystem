@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
 
@@ -8,6 +8,7 @@ const authStore = useAuthStore();
 const courses = ref([]);
 const teachers = ref([]);
 const newCourse = ref({ title: '', description: '', grade_level: 'Grade 1', teacher_id: '' });
+const filterGrade = ref('');
 
 // CBC Grades matching backend
 const grades = [
@@ -15,6 +16,16 @@ const grades = [
     "Grade 1", "Grade 2", "Grade 3",
     "Grade 4", "Grade 5", "Grade 6"
 ];
+
+// Courses grouped by class in CBC order — keeps the list short and scannable
+const groupedCourses = computed(() => {
+    const visible = filterGrade.value
+        ? courses.value.filter(c => c.grade_level === filterGrade.value)
+        : courses.value;
+    return grades
+        .map(g => ({ grade: g, items: visible.filter(c => c.grade_level === g) }))
+        .filter(group => group.items.length > 0);
+});
 
 const loadData = async () => {
   // Subjects are visible to everyone; the staff list needs elevated rights,
@@ -95,7 +106,13 @@ onMounted(() => {
   <div class="p-8 max-w-7xl mx-auto">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold text-navy">Courses Management</h1>
-        <button v-if="authStore.isAdmin" @click="seedSubjects" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light">Seed CBC Subjects</button>
+        <div class="flex gap-4">
+            <select v-model="filterGrade" class="border border-gray-300 p-2 rounded-md bg-white focus:ring-navy focus:border-navy">
+                <option value="">All Classes</option>
+                <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
+            </select>
+            <button v-if="authStore.isAdmin" @click="seedSubjects" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light">Seed CBC Subjects</button>
+        </div>
     </div>
 
     <!-- Registration Form -->
@@ -142,20 +159,27 @@ onMounted(() => {
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          <tr v-for="course in courses" :key="course.id" class="hover:bg-gray-50">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-navy">{{ course.title }}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ course.description }}</td>
-            <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                    {{ course.grade_level }}
-                </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ getTeacherName(course.teacher_id) }}</td>
-            <td v-if="authStore.isAdmin" class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button @click="removeCourse(course)" class="text-red-accent hover:text-red-hover font-bold underline">Delete</button>
-            </td>
-          </tr>
-          <tr v-if="courses.length === 0">
+          <template v-for="group in groupedCourses" :key="group.grade">
+            <tr class="bg-gray-50">
+                <td :colspan="authStore.isAdmin ? 5 : 4" class="px-6 py-2 text-xs font-bold text-navy uppercase tracking-wider">
+                    {{ group.grade }} <span class="text-gray-400 font-medium normal-case">— {{ group.items.length }} course(s)</span>
+                </td>
+            </tr>
+            <tr v-for="course in group.items" :key="course.id" class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-navy">{{ course.title }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ course.description }}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                        {{ course.grade_level }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ getTeacherName(course.teacher_id) }}</td>
+                <td v-if="authStore.isAdmin" class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button @click="removeCourse(course)" class="text-red-accent hover:text-red-hover font-bold underline">Delete</button>
+                </td>
+            </tr>
+          </template>
+          <tr v-if="groupedCourses.length === 0">
             <td :colspan="authStore.isAdmin ? 5 : 4" class="px-6 py-8 text-center text-gray-500 text-sm">No courses added yet.</td>
           </tr>
         </tbody>

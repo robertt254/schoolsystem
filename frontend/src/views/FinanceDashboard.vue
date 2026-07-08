@@ -2,6 +2,7 @@
 import { ref, watch, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
+import ReceiptModal from '../components/ReceiptModal.vue';
 
 const authStore = useAuthStore();
 const dashboardStats = ref({
@@ -83,10 +84,13 @@ const createInvoice = async () => {
 
 // Payments are applied waterfall-style by the backend: oldest arrears first,
 // the remainder to the current term.
+const receipt = ref(null);
+
 const makePayment = async () => {
     if(!newPayment.value.invoice_id || !newPayment.value.amount) return;
     message.value = '';
     try {
+        const student = students.value.find(s => s.id === parseInt(newPayment.value.invoice_id));
         const res = await api.recordFeePayment({
             student_id: parseInt(newPayment.value.invoice_id),
             amount: parseFloat(newPayment.value.amount),
@@ -96,12 +100,23 @@ const makePayment = async () => {
         });
         newPayment.value = { invoice_id: '', amount: '', payment_type: 'Tuition' };
         message.value = `Payment recorded — receipt ${res.data.receipt_number}.`;
+        // Show the branded receipt immediately for printing
+        receipt.value = {
+            ...res.data,
+            student_name: student ? `${student.first_name} ${student.last_name}` : `Student #${res.data.student_id}`,
+            admission_number: student?.admission_number || '',
+            grade_level: student?.grade_level || ''
+        };
         loadDashboard();
     } catch (e) {
         console.error("Failed to process payment", e);
         message.value = e.response?.data?.detail || 'Failed to process payment.';
     }
 }
+
+const openReceipt = (p) => {
+    receipt.value = p;
+};
 
 // Bona's smart payment flow: when a student and amount are picked, preview how
 // the waterfall will split the payment (arrears first, remainder to this term).
@@ -272,7 +287,7 @@ onMounted(() => {
                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th v-if="authStore.isAdmin" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
@@ -288,15 +303,18 @@ onMounted(() => {
                             {{ p.status === 'active' ? 'Paid' : 'Deleted' }}
                         </span>
                     </td>
-                    <td v-if="authStore.isAdmin" class="px-6 py-3 whitespace-nowrap text-right text-sm font-medium">
-                        <button v-if="p.status === 'active'" @click="deletePayment(p)" class="text-red-accent hover:text-red-hover font-bold underline">Delete</button>
+                    <td class="px-6 py-3 whitespace-nowrap text-right text-sm font-medium">
+                        <button v-if="p.status === 'active'" @click="openReceipt(p)" class="text-navy hover:text-navy-light mx-1 font-bold underline">Receipt</button>
+                        <button v-if="authStore.isAdmin && p.status === 'active'" @click="deletePayment(p)" class="text-red-accent hover:text-red-hover mx-1 font-bold underline">Delete</button>
                     </td>
                 </tr>
                 <tr v-if="paymentLog.length === 0">
-                    <td :colspan="authStore.isAdmin ? 7 : 6" class="px-6 py-8 text-center text-gray-500 text-sm">No payments recorded yet.</td>
+                    <td colspan="7" class="px-6 py-8 text-center text-gray-500 text-sm">No payments recorded yet.</td>
                 </tr>
             </tbody>
         </table>
     </div>
+
+    <ReceiptModal v-if="receipt" :payment="receipt" @close="receipt = null" />
   </div>
 </template>

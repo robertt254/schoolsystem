@@ -160,12 +160,14 @@ def create_student(
     if current_user.role not in WRITE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized to admit students")
 
-    admission_number = student.admission_number or _generate_admission_number(db)
-
-    if db.query(models.Student).filter(
+    # Admission numbers are always system-generated: sequential, unique and
+    # immutable once assigned. Any client-supplied value is ignored.
+    admission_number = _generate_admission_number(db)
+    while db.query(models.Student).filter(
         models.Student.admission_number == admission_number
     ).first():
-        raise HTTPException(status_code=400, detail="Admission number already registered")
+        seq = int(admission_number.split("-")[-1]) + 1
+        admission_number = f"BONA-{seq:04d}"
 
     data = student.model_dump()
     data["admission_number"] = admission_number

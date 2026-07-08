@@ -6,9 +6,15 @@ import { useAuthStore } from '../stores/auth';
 const authStore = useAuthStore();
 const students = ref([]);
 const courses = ref([]);
-const newStudent = ref({ admission_number: '', name: '', grade: 'Play Group', guardian_contact: '' });
+const blankStudent = () => ({
+    first_name: '', last_name: '', grade: 'Play Group',
+    date_of_birth: '', gender: '', guardian_name: '', guardian_contact: '',
+    guardian2_name: '', guardian2_phone: '', address: '', previous_school: ''
+});
+const newStudent = ref(blankStudent());
 const searchTerm = ref('');
 const filterGrade = ref('');
+const registerMessage = ref('');
 
 // CBC Grades matching backend
 const grades = [
@@ -126,20 +132,30 @@ const loadCourses = async () => {
 };
 
 const addStudent = async () => {
-  if (!newStudent.value.admission_number || !newStudent.value.name || !newStudent.value.guardian_contact) return;
+  const f = newStudent.value;
+  if (!f.first_name || !f.last_name) return;
+  registerMessage.value = '';
   try {
-      const parts = newStudent.value.name.trim().split(/\s+/);
-      await api.createStudent({
-          first_name: parts[0],
-          last_name: parts.slice(1).join(' ') || parts[0],
-          admission_number: newStudent.value.admission_number,
-          grade_level: newStudent.value.grade,
-          guardian_phone: newStudent.value.guardian_contact
+      const res = await api.createStudent({
+          first_name: f.first_name,
+          last_name: f.last_name,
+          // Admission number is system-generated (BONA-XXXX) and immutable
+          grade_level: f.grade,
+          date_of_birth: f.date_of_birth || null,
+          gender: f.gender || null,
+          guardian_name: f.guardian_name || null,
+          guardian_phone: f.guardian_contact || null,
+          guardian2_name: f.guardian2_name || null,
+          guardian2_phone: f.guardian2_phone || null,
+          address: f.address || null,
+          previous_school: f.previous_school || null
       });
-      newStudent.value = { admission_number: '', name: '', grade: 'Play Group', guardian_contact: '' };
+      registerMessage.value = `Admitted ${res.data.first_name} ${res.data.last_name} — admission number ${res.data.admission_number}.`;
+      newStudent.value = blankStudent();
       loadStudents();
   } catch (e) {
       console.error(e);
+      registerMessage.value = e.response?.data?.detail || 'Failed to register student.';
   }
 };
 
@@ -209,15 +225,15 @@ onMounted(() => {
 
     <!-- Registration Form -->
     <div class="mb-8 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-      <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Register New Student</h2>
+      <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Register New Student — Bona School Kenya</h2>
       <form @submit.prevent="addStudent" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Admission No.</label>
-            <input v-model="newStudent.admission_number" type="text" placeholder="ADM-001" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" required />
+            <label class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+            <input v-model="newStudent.first_name" type="text" placeholder="First name" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" required />
         </div>
         <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-            <input v-model="newStudent.name" type="text" placeholder="Student Name" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" required />
+            <label class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+            <input v-model="newStudent.last_name" type="text" placeholder="Last name" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" required />
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
@@ -226,11 +242,44 @@ onMounted(() => {
             </select>
         </div>
         <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Guardian Contact</label>
-            <input v-model="newStudent.guardian_contact" type="text" placeholder="+254..." class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" required />
+            <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+            <input v-model="newStudent.date_of_birth" type="date" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
         </div>
-        <div class="md:col-span-4 mt-2">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+            <select v-model="newStudent.gender" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                <option value="">—</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Guardian Name</label>
+            <input v-model="newStudent.guardian_name" type="text" placeholder="Parent / guardian" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Guardian Phone</label>
+            <input v-model="newStudent.guardian_contact" type="text" placeholder="+254..." class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Guardian 2 Name (optional)</label>
+            <input v-model="newStudent.guardian2_name" type="text" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Guardian 2 Phone (optional)</label>
+            <input v-model="newStudent.guardian2_phone" type="text" placeholder="+254..." class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Home Address</label>
+            <input v-model="newStudent.address" type="text" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Previous School (optional)</label>
+            <input v-model="newStudent.previous_school" type="text" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+        </div>
+        <div class="md:col-span-4 mt-2 flex items-center gap-4">
             <button type="submit" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-navy w-full md:w-auto">Register Student</button>
+            <span v-if="registerMessage" class="text-sm font-medium" :class="registerMessage.startsWith('Admitted') ? 'text-green-600' : 'text-red-accent'">{{ registerMessage }}</span>
         </div>
       </form>
     </div>

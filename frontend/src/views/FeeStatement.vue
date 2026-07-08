@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
+import ReceiptModal from '../components/ReceiptModal.vue';
 
 const authStore = useAuthStore();
 const students = ref([]);
@@ -59,13 +60,27 @@ const removeCarryForward = async (cf) => {
 
 const printStatement = () => window.print();
 
+// Branded receipt for a single payment
+const receipt = ref(null);
+const openReceipt = (p) => {
+    receipt.value = {
+        ...p,
+        student_name: studentInfo.value ? `${studentInfo.value.first_name} ${studentInfo.value.last_name}` : '',
+        admission_number: studentInfo.value?.admission_number || '',
+        grade_level: studentInfo.value?.grade_level || ''
+    };
+};
+
 onMounted(loadStudents);
 </script>
 
 <template>
   <div class="p-8 max-w-7xl mx-auto space-y-8">
     <div class="flex justify-between items-center">
-        <h1 class="text-3xl font-bold text-navy">Fee Statement</h1>
+        <div>
+            <h1 class="text-3xl font-bold text-navy">Fee Statement</h1>
+            <p class="text-sm text-gray-500">Bona School Kenya</p>
+        </div>
         <button v-if="studentInfo" @click="printStatement" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light">Print</button>
     </div>
 
@@ -84,6 +99,12 @@ onMounted(loadStudents);
     </div>
 
     <template v-if="studentInfo">
+      <div class="print-area space-y-8">
+        <!-- Print-only letterhead -->
+        <div class="hidden print:block text-center border-b-2 border-navy pb-4">
+            <h2 class="text-2xl font-extrabold text-navy">BONA SCHOOL KENYA</h2>
+            <p class="text-xs uppercase tracking-widest text-gray-500">Official Fee Statement</p>
+        </div>
         <!-- Header cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -165,6 +186,7 @@ onMounted(loadStudents);
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type / Term</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Allocation</th>
                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider no-print">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -182,13 +204,19 @@ onMounted(loadStudents);
                             <span v-else>—</span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ money(p.amount) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium no-print">
+                            <button @click="openReceipt(p)" class="text-navy hover:text-navy-light font-bold underline">Receipt</button>
+                        </td>
                     </tr>
                     <tr v-if="payments.length === 0">
-                        <td colspan="5" class="px-6 py-8 text-center text-gray-500 text-sm">No payments recorded for this student.</td>
+                        <td colspan="6" class="px-6 py-8 text-center text-gray-500 text-sm">No payments recorded for this student.</td>
                     </tr>
                 </tbody>
             </table>
         </div>
+      </div>
     </template>
+
+    <ReceiptModal v-if="receipt" :payment="receipt" @close="receipt = null" />
   </div>
 </template>

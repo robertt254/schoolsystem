@@ -75,9 +75,10 @@ onMounted(async () => {
     </div>
 
     <!-- Report card -->
-    <div v-if="report" class="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+    <div v-if="report" class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print-area">
         <div class="text-center border-b pb-4 mb-6">
-            <h2 class="text-2xl font-bold text-navy">CBC Progress Report</h2>
+            <h2 class="text-2xl font-bold text-navy">BONA SCHOOL KENYA</h2>
+            <p class="text-lg font-semibold text-gray-700">CBC Progress Report</p>
             <p class="text-gray-600 mt-1">
                 <span class="font-semibold">{{ report.student_name }}</span> · {{ report.admission_number }} ·
                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">{{ report.grade_level }}</span>
