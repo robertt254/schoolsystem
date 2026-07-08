@@ -1,0 +1,215 @@
+<script setup>
+import { ref, onMounted } from 'vue';
+import api from '../api';
+
+const grades = [
+    "Play Group", "PP1", "PP2",
+    "Grade 1", "Grade 2", "Grade 3",
+    "Grade 4", "Grade 5", "Grade 6"
+];
+const terms = ["Term 1", "Term 2", "Term 3"];
+const examTypes = ["CAT1", "CAT2", "MidTerm", "EndTerm"];
+
+const filters = ref({
+    grade: 'Grade 1',
+    term: 'Term 1',
+    exam_type: 'EndTerm',
+    subject: '',
+    academic_year: new Date().getFullYear(),
+    max_marks: 100
+});
+
+const subjects = ref([]);
+const entryRows = ref([]);       // [{student_id, student_name, admission_number, marks}]
+const resultsView = ref(null);   // {subjects: [], students: []}
+const message = ref('');
+const saving = ref(false);
+
+const loadSubjects = async () => {
+    try {
+        const res = await api.getSubjects({ grade: filters.value.grade });
+        subjects.value = res.data;
+        if (!filters.value.subject && subjects.value.length) {
+            filters.value.subject = subjects.value[0].name;
+        }
+    } catch (e) { console.error(e); }
+};
+
+const loadEntrySheet = async () => {
+    message.value = '';
+    try {
+        const res = await api.getStudents({ grade: filters.value.grade });
+        entryRows.value = res.data.map(s => ({
+            student_id: s.id,
+            student_name: `${s.first_name} ${s.last_name}`,
+            admission_number: s.admission_number,
+            marks: null
+        }));
+    } catch (e) { console.error(e); }
+};
+
+const loadResults = async () => {
+    try {
+        const res = await api.getGradeExamResults(
+            filters.value.grade, filters.value.term, filters.value.academic_year, null
+        );
+        resultsView.value = res.data;
+    } catch (e) { console.error(e); }
+};
+
+const saveMarks = async () => {
+    const rows = entryRows.value.filter(r => r.marks !== null && r.marks !== '');
+    if (!rows.length || !filters.value.subject) return;
+    saving.value = true;
+    message.value = '';
+    try {
+        const res = await api.recordExamResults({
+            grade_level: filters.value.grade,
+            term: filters.value.term,
+            exam_type: filters.value.exam_type,
+            subject: filters.value.subject,
+            academic_year: parseInt(filters.value.academic_year),
+            results: rows.map(r => ({
+                student_id: r.student_id,
+                marks: parseFloat(r.marks),
+                max_marks: parseInt(filters.value.max_marks)
+            }))
+        });
+        message.value = `Saved ${res.data.saved} result(s) for ${filters.value.subject} (${filters.value.exam_type}).`;
+        loadResults();
+    } catch (e) {
+        console.error(e);
+        message.value = e.response?.data?.detail || 'Failed to save results.';
+    }
+    saving.value = false;
+};
+
+const onGradeChange = () => {
+    filters.value.subject = '';
+    loadSubjects();
+    loadEntrySheet();
+    loadResults();
+};
+
+onMounted(() => {
+    loadSubjects();
+    loadEntrySheet();
+    loadResults();
+});
+</script>
+
+<template>
+  <div class="p-8 max-w-7xl mx-auto space-y-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold text-navy">Exams</h1>
+    </div>
+
+    <!-- Marks entry -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Enter Exam Marks</h2>
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-4 items-end mb-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Grade</label>
+                <select v-model="filters.grade" @change="onGradeChange" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option v-for="g in grades" :key="g" :value="g">{{ g }}</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Term</label>
+                <select v-model="filters.term" @change="loadResults" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Exam</label>
+                <select v-model="filters.exam_type" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option v-for="e in examTypes" :key="e" :value="e">{{ e }}</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                <select v-model="filters.subject" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option value="">Select subject</option>
+                    <option v-for="s in subjects" :key="s.id" :value="s.name">{{ s.name }}</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <input v-model="filters.academic_year" type="number" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Out of</label>
+                <input v-model="filters.max_marks" type="number" min="1" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+            </div>
+        </div>
+
+        <table class="min-w-full divide-y divide-gray-200 mb-4">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adm No.</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marks</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <tr v-for="r in entryRows" :key="r.student_id" class="hover:bg-gray-50">
+                    <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-navy">{{ r.admission_number }}</td>
+                    <td class="px-6 py-2 whitespace-nowrap text-sm text-gray-900">{{ r.student_name }}</td>
+                    <td class="px-6 py-2">
+                        <input v-model="r.marks" type="number" min="0" :max="filters.max_marks" step="0.5"
+                               class="border border-gray-300 p-1.5 rounded-md w-28 text-sm focus:ring-navy focus:border-navy" />
+                    </td>
+                </tr>
+                <tr v-if="entryRows.length === 0">
+                    <td colspan="3" class="px-6 py-8 text-center text-gray-500 text-sm">No students in this grade.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="flex items-center gap-4">
+            <button @click="saveMarks" :disabled="saving" class="bg-red-accent text-white px-6 py-2 rounded-md hover:bg-red-hover disabled:opacity-50">
+                {{ saving ? 'Saving…' : 'Save Marks' }}
+            </button>
+            <p v-if="message" class="text-sm font-medium" :class="message.startsWith('Saved') ? 'text-green-600' : 'text-red-accent'">{{ message }}</p>
+        </div>
+    </div>
+
+    <!-- Results / merit list -->
+    <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden" v-if="resultsView">
+        <h2 class="text-xl font-bold text-navy p-6 pb-3">{{ filters.grade }} · {{ filters.term }} Merit List</h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pos</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                        <th v-for="sub in resultsView.subjects" :key="sub" class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ sub }}</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">%</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr v-for="row in resultsView.students" :key="row.student_id" class="hover:bg-gray-50">
+                        <td class="px-6 py-3 whitespace-nowrap text-sm font-bold text-navy">{{ row.position }}</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{{ row.student_name }}</td>
+                        <td v-for="sub in resultsView.subjects" :key="sub" class="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
+                            {{ row.scores[sub] ? row.scores[sub].marks : '—' }}
+                        </td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ row.total_marks }}</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-right">
+                            <span v-if="row.percentage !== null" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                  :class="row.percentage >= 70 ? 'bg-green-100 text-green-800' : row.percentage >= 50 ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'">
+                                {{ row.percentage }}%
+                            </span>
+                            <span v-else class="text-gray-400">—</span>
+                        </td>
+                    </tr>
+                    <tr v-if="resultsView.students.length === 0">
+                        <td :colspan="3 + resultsView.subjects.length" class="px-6 py-8 text-center text-gray-500 text-sm">No results recorded for this selection.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+  </div>
+</template>

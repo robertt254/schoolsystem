@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import api from '../api';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
 
 const courses = ref([]);
 const teachers = ref([]);
@@ -14,22 +17,39 @@ const grades = [
 ];
 
 const loadData = async () => {
-  try {
-      const [coursesRes, teachersRes] = await Promise.all([
-          api.getCourses(),
-          api.getTeachers()
-      ]);
-      courses.value = coursesRes.data;
-      teachers.value = teachersRes.data;
-  } catch (e) {
-      console.error(e);
+  // Subjects are visible to everyone; the staff list needs elevated rights,
+  // so a 403 there must not break the page (teacher names come with subjects).
+  const [coursesRes, teachersRes] = await Promise.allSettled([
+      api.getSubjects(),
+      api.getStaff()
+  ]);
+  if (coursesRes.status === 'fulfilled') {
+      courses.value = coursesRes.value.data.map(s => ({
+          id: s.id,
+          title: s.name,
+          description: 'CBC Learning Area',
+          grade_level: s.grade_level,
+          teacher_id: s.teacher_id,
+          teacher_name: s.teacher_name
+      }));
+  } else {
+      console.error(coursesRes.reason);
+  }
+  if (teachersRes.status === 'fulfilled') {
+      teachers.value = teachersRes.value.data
+          .filter(s => ['teacher', 'senior_teacher'].includes(s.role))
+          .map(s => ({ id: s.id, name: s.name }));
   }
 };
 
 const addCourse = async () => {
   if (!newCourse.value.title || !newCourse.value.teacher_id) return;
   try {
-      await api.createCourse(newCourse.value);
+      await api.createSubject({
+          name: newCourse.value.title,
+          grade_level: newCourse.value.grade_level,
+          teacher_id: parseInt(newCourse.value.teacher_id)
+      });
       newCourse.value = { title: '', description: '', grade_level: 'Grade 1', teacher_id: '' };
       loadData();
   } catch (e) {
@@ -38,8 +58,32 @@ const addCourse = async () => {
 };
 
 const getTeacherName = (id) => {
+  if (!id) return 'Unassigned';
   const teacher = teachers.value.find(t => t.id === id);
-  return teacher ? teacher.name : 'Unknown';
+  if (teacher) return teacher.name;
+  const course = courses.value.find(c => c.teacher_id === id);
+  return course?.teacher_name || 'Unknown';
+};
+
+// Preload the standard CBC learning areas for every grade in one click
+const seedSubjects = async () => {
+  if (!window.confirm('Seed the standard CBC learning areas for all grades?')) return;
+  try {
+      await api.seedSubjects();
+      loadData();
+  } catch (e) {
+      window.alert(e.response?.data?.detail || 'Failed to seed subjects.');
+  }
+};
+
+const removeCourse = async (course) => {
+  if (!window.confirm(`Delete "${course.title}" (${course.grade_level})?`)) return;
+  try {
+      await api.deleteSubject(course.id);
+      loadData();
+  } catch (e) {
+      window.alert(e.response?.data?.detail || 'Failed to delete course.');
+  }
 };
 
 onMounted(() => {
@@ -51,6 +95,7 @@ onMounted(() => {
   <div class="p-8 max-w-7xl mx-auto">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold text-navy">Courses Management</h1>
+        <button v-if="authStore.isAdmin" @click="seedSubjects" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light">Seed CBC Subjects</button>
     </div>
 
     <!-- Registration Form -->
@@ -93,6 +138,7 @@ onMounted(() => {
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
+            <th v-if="authStore.isAdmin" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -105,9 +151,12 @@ onMounted(() => {
                 </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ getTeacherName(course.teacher_id) }}</td>
+            <td v-if="authStore.isAdmin" class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <button @click="removeCourse(course)" class="text-red-accent hover:text-red-hover font-bold underline">Delete</button>
+            </td>
           </tr>
           <tr v-if="courses.length === 0">
-            <td colspan="4" class="px-6 py-8 text-center text-gray-500 text-sm">No courses added yet.</td>
+            <td :colspan="authStore.isAdmin ? 5 : 4" class="px-6 py-8 text-center text-gray-500 text-sm">No courses added yet.</td>
           </tr>
         </tbody>
       </table>

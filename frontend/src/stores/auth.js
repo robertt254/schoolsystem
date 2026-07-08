@@ -3,14 +3,20 @@ import api from '../api';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    user: null,
+    user: JSON.parse(localStorage.getItem('user_info') || 'null'),
     token: localStorage.getItem('token') || null,
   }),
   getters: {
     isAuthenticated: (state) => !!state.token,
-    isAdmin: (state) => state.user?.role === 'admin',
-    isTeacher: (state) => state.user?.role === 'teacher',
-    isFinance: (state) => state.user?.role === 'finance_officer',
+    isAdmin: (state) => ['admin', 'principal'].includes(state.user?.role),
+    isTeacher: (state) => ['teacher', 'senior_teacher'].includes(state.user?.role),
+    isFinance: (state) => state.user?.role === 'accountant',
+    isSecretary: (state) => state.user?.role === 'secretary',
+    // Composite permissions mirroring backend role checks
+    canFinance: (state) => ['admin', 'principal', 'accountant'].includes(state.user?.role),
+    canComms: (state) => ['admin', 'principal', 'secretary'].includes(state.user?.role),
+    canManageStudents: (state) => ['admin', 'principal', 'secretary'].includes(state.user?.role),
+    isSystemAdmin: (state) => state.user?.role === 'admin',
   },
   actions: {
     async login(username, password) {
@@ -21,9 +27,11 @@ export const useAuthStore = defineStore('auth', {
 
         const response = await api.login(formData);
         this.token = response.data.access_token;
+        // The backend embeds { name, role } in the login response; keep the
+        // typed username too for the sidebar greeting.
+        this.user = { username, ...response.data.user_info };
         localStorage.setItem('token', this.token);
-
-        await this.fetchUser();
+        localStorage.setItem('user_info', JSON.stringify(this.user));
         return true;
       } catch (error) {
         console.error('Login failed', error);
@@ -31,19 +39,23 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async fetchUser() {
+      // User info is delivered with the login response and cached locally —
+      // there is no separate /me endpoint in this API.
       if (!this.token) return;
-      try {
-        const response = await api.getMe(this.token);
-        this.user = response.data;
-      } catch (error) {
-        console.error('Fetch user failed', error);
-        this.logout();
+      if (!this.user) {
+        const cached = localStorage.getItem('user_info');
+        if (cached) {
+          this.user = JSON.parse(cached);
+        } else {
+          this.logout();
+        }
       }
     },
     logout() {
       this.user = null;
       this.token = null;
       localStorage.removeItem('token');
+      localStorage.removeItem('user_info');
     }
   }
 });
