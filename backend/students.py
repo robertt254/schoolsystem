@@ -440,15 +440,15 @@ def promote_students(
     if current_user.role not in {"admin", "principal"}:
         raise HTTPException(status_code=403, detail="Only admin or principal can promote students")
 
-    promoted, graduated = 0, 0
-    for sid in payload.student_ids:
-        student = db.query(models.Student).filter(
-            models.Student.id == sid,
-            models.Student.is_deleted == False,
-        ).first()
-        if not student:
-            continue
+    # Single query for the whole batch — avoids an N+1 per student id
+    students = db.query(models.Student).filter(
+        models.Student.id.in_(payload.student_ids),
+        models.Student.is_deleted == False,
+    ).all()
 
+    promoted, graduated = 0, 0
+    for student in students:
+        sid = student.id
         if payload.to_grade is None:
             next_grade = GRADE_PROGRESSION.get(student.grade_level)
         else:

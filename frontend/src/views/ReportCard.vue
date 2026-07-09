@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../api';
+import SchoolBadge from '../components/SchoolBadge.vue';
 
 const route = useRoute();
 const students = ref([]);
@@ -77,8 +78,12 @@ onMounted(async () => {
     <!-- Report card -->
     <div v-if="report" class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print-area">
         <div class="text-center border-b pb-4 mb-6">
-            <h2 class="text-2xl font-bold text-navy">BONA SCHOOL KENYA</h2>
-            <p class="text-lg font-semibold text-gray-700">CBC Progress Report</p>
+            <div class="flex justify-center mb-2">
+                <SchoolBadge :size="88" />
+            </div>
+            <h2 class="text-2xl font-bold text-navy">THE BONA SCHOOL</h2>
+            <p class="text-xs font-semibold uppercase tracking-widest text-red-accent">In Truth We Excel</p>
+            <p class="text-lg font-semibold text-gray-700 mt-1">CBC Progress Report</p>
             <p class="text-gray-600 mt-1">
                 <span class="font-semibold">{{ report.student_name }}</span> · {{ report.admission_number }} ·
                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">{{ report.grade_level }}</span>

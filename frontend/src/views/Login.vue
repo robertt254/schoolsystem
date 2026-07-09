@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useRouter } from 'vue-router';
+import SchoolBadge from '../components/SchoolBadge.vue';
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -25,10 +26,16 @@ const handleLogin = async () => {
   <div class="min-h-screen bg-gray-bg flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-lg border border-gray-200">
       <div>
-        <h2 class="mt-6 text-center text-3xl font-extrabold text-navy">
-          BONA SCHOOL KENYA
+        <div class="flex justify-center">
+          <SchoolBadge :size="110" />
+        </div>
+        <h2 class="mt-4 text-center text-3xl font-extrabold text-navy">
+          THE BONA SCHOOL
         </h2>
-        <p class="mt-2 text-center text-sm text-gray-600">
+        <p class="mt-1 text-center text-xs font-semibold uppercase tracking-widest text-red-accent">
+          In Truth We Excel
+        </p>
+        <p class="mt-3 text-center text-sm text-gray-600">
           School Management System — sign in to your account
         </p>
       </div>

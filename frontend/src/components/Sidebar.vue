@@ -80,8 +80,8 @@ const toggle = (key) => {
 <template>
   <aside class="w-64 bg-navy text-white flex flex-col shadow-lg flex-shrink-0 min-h-screen">
     <div class="p-6 border-b border-navy-light">
-      <h1 class="text-2xl font-bold text-red-accent">BONA SCHOOL</h1>
-      <p class="text-xs uppercase tracking-widest text-gray-400">Kenya</p>
+      <h1 class="text-2xl font-bold text-red-accent">THE BONA SCHOOL</h1>
+      <p class="text-xs uppercase tracking-widest text-gray-400">In Truth We Excel</p>
       <p v-if="authStore.user" class="text-sm mt-2 text-gray-300">Welcome, {{ authStore.user.name || authStore.user.username }}</p>
     </div>
     <nav class="flex-1 p-4 space-y-1 overflow-y-auto">

@@ -24,11 +24,17 @@ Usage (from the backend directory, e.g. the Render web-service Shell tab):
     python reset_data.py --yes            # wipe students/fees/logs
     python reset_data.py --yes --with-finance   # also zero expenses/payroll/petty cash
 """
+import re
 import sys
 
 from sqlalchemy import text
 
 from database import engine
+
+# Identifiers are interpolated into SQL (TRUNCATE/COUNT take no bind params).
+# Validate them even though they come from the fixed lists below, so a future
+# edit can never turn this into an injection vector.
+_SAFE_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 # Order is illustrative only; TRUNCATE ... CASCADE handles dependencies.
 CORE_TABLES = [
@@ -65,13 +71,17 @@ def main() -> None:
 
     with engine.connect() as conn:
         tables = _existing(conn, targets)
+        bad = [t for t in tables if not _SAFE_IDENTIFIER.fullmatch(t)]
+        if bad:
+            print(f"Refusing to run: unsafe table identifier(s) {bad}")
+            return
         if not tables:
             print("No matching tables found — nothing to do.")
             return
 
         print("Tables to clear and current row counts:")
         for t in tables:
-            count = conn.execute(text(f"SELECT COUNT(*) FROM {t}")).scalar()
+            count = conn.execute(text(f'SELECT COUNT(*) FROM "{t}"')).scalar()
             print(f"  {t:<22} {count:>8}")
 
         if not confirm:
@@ -80,8 +90,9 @@ def main() -> None:
                   "expenses/payroll/petty cash).")
             return
 
-        # All names come from the fixed allow-lists above (no user input).
-        conn.execute(text("TRUNCATE " + ", ".join(tables) + " RESTART IDENTITY CASCADE"))
+        # All names come from the fixed allow-lists above (no user input) and
+        # were validated against _SAFE_IDENTIFIER before interpolation.
+        conn.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in tables) + " RESTART IDENTITY CASCADE"))
         conn.commit()
         print("\nDone - listed tables truncated and ID/receipt counters reset to 1.")
         print("Configuration and user logins were left intact.")

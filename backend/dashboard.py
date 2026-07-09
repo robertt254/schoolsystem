@@ -5,7 +5,7 @@ from sqlalchemy import func, cast, Date
 from datetime import date
 from database import get_db
 import models, auth
-from fees import compute_effective_term_collection, _get_expected_fee, _get_rollover_credit, TERM_ORDER
+from fees import _expected_fee_map, _expected_from_map, _paid_map, TERM_ORDER, TERM_BY_NUM
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
@@ -47,32 +47,37 @@ def get_dashboard_stats(
         round(today_present / today_records * 100) if today_records > 0 else None
     )
 
-    # Term fee collection (effective: overpayments capped per student, not inflating %)
+    # Term fee collection (effective: overpayments capped per student, not
+    # inflating %) and defaulter count — one pass over three batched queries.
     try:
         active_students = db.query(models.Student).filter(
             models.Student.is_deleted == False,
             models.Student.status == "Active",
         ).all()
-        term_expected = round(sum(_get_expected_fee(db, s.grade_level, term) for s in active_students), 2)
-        term_collected = compute_effective_term_collection(db, active_students, term)
-        term_pct = round(term_collected / term_expected * 100) if term_expected > 0 else 0
-
-        # Defaulters count — students whose effective paid < expected (reuses rollover logic)
+        fee_map = _expected_fee_map(db)
+        paid_map = _paid_map(db, [s.id for s in active_students])
         term_num = TERM_ORDER.get(term, 1)
+        prior_terms = [TERM_BY_NUM[n] for n in range(1, term_num)]
+
+        term_expected = 0.0
+        term_collected = 0.0
         defaulters_count = 0
         for s in active_students:
-            expected_s = _get_expected_fee(db, s.grade_level, term)
-            direct_paid = float(
-                db.query(func.sum(models.FeePayment.amount))
-                .filter(models.FeePayment.student_id == s.id, models.FeePayment.term == term)
-                .scalar() or 0
-            )
-            rollover = _get_rollover_credit(db, s.id, s.grade_level, term_num)
+            expected_s = _expected_from_map(fee_map, s.grade_level, term)
+            term_expected += expected_s
+            direct_paid = paid_map.get((s.id, term), 0.0)
+            cum_expected = sum(_expected_from_map(fee_map, s.grade_level, t) for t in prior_terms)
+            cum_paid = sum(paid_map.get((s.id, t), 0.0) for t in prior_terms)
+            rollover = max(0.0, round(cum_paid - cum_expected, 2))
+            if expected_s > 0:
+                term_collected += min(direct_paid + rollover, expected_s)
             if (direct_paid + rollover) < expected_s:
                 defaulters_count += 1
+        term_expected = round(term_expected, 2)
+        term_collected = round(term_collected, 2)
+        term_pct = round(term_collected / term_expected * 100) if term_expected > 0 else 0
     except Exception:
         db.rollback()  # reset aborted transaction so subsequent queries work
-        active_students = []
         term_expected = 0
         term_collected = 0
         term_pct = 0

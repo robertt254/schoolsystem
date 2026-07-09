@@ -1,4 +1,6 @@
 """Administrative maintenance endpoints — system-admin only."""
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -9,6 +11,19 @@ import models, auth
 from audit import log_action
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
+
+# Table names are interpolated into TRUNCATE/COUNT statements (they cannot be
+# bound parameters). Defense in depth: even though every name comes from the
+# fixed allow-lists below, reject anything that is not a plain identifier so a
+# future change can never turn this into an injection vector.
+_SAFE_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _validated(tables: list[str]) -> list[str]:
+    bad = [t for t in tables if not _SAFE_IDENTIFIER.fullmatch(t)]
+    if bad:
+        raise ValueError(f"Unsafe table identifier(s): {bad}")
+    return tables
 
 # Operational data cleared on reset. Everything else (users/logins, fee
 # structure, term dates, subjects, library catalogue, calendar, budgets) is kept.
@@ -56,14 +71,15 @@ def reset_data(
             {"names": wanted},
         ).fetchall()
     }
-    targets = [t for t in wanted if t in existing]  # preserve order, only existing
+    targets = _validated([t for t in wanted if t in existing])  # preserve order, only existing
     if not targets:
         return {"cleared": {}}
 
-    # Row counts before wiping (names come from fixed allow-lists, not user input).
-    cleared = {t: db.execute(text(f"SELECT COUNT(*) FROM {t}")).scalar() for t in targets}
+    # Row counts before wiping. Identifiers pass _validated() above and come
+    # from the fixed allow-lists — never from request input.
+    cleared = {t: db.execute(text(f'SELECT COUNT(*) FROM "{t}"')).scalar() for t in targets}
 
-    db.execute(text("TRUNCATE " + ", ".join(targets) + " RESTART IDENTITY CASCADE"))
+    db.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in targets) + " RESTART IDENTITY CASCADE"))
     # audit_logs was just truncated; this becomes the first new entry — a record
     # that the reset happened, by whom.
     log_action(db, current_user.id, "RESET", "database", None,

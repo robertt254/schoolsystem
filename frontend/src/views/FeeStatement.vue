@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
+import SchoolBadge from '../components/SchoolBadge.vue';
 
 const authStore = useAuthStore();
 const students = ref([]);
@@ -102,8 +103,12 @@ onMounted(loadStudents);
       <div class="print-area space-y-8">
         <!-- Print-only letterhead -->
         <div class="hidden print:block text-center border-b-2 border-navy pb-4">
-            <h2 class="text-2xl font-extrabold text-navy">BONA SCHOOL KENYA</h2>
-            <p class="text-xs uppercase tracking-widest text-gray-500">Official Fee Statement</p>
+            <div class="flex justify-center mb-2">
+                <SchoolBadge :size="80" />
+            </div>
+            <h2 class="text-2xl font-extrabold text-navy">THE BONA SCHOOL</h2>
+            <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">In Truth We Excel</p>
+            <p class="text-xs uppercase tracking-widest text-gray-500 mt-1">Official Fee Statement</p>
         </div>
         <!-- Header cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -229,7 +229,17 @@ async def startup():
         with SessionLocal() as db:
             if db.query(models.User).count() == 0:
                 admin_username = os.getenv("ADMIN_USERNAME", "admin")
-                admin_password = os.getenv("ADMIN_INITIAL_PASSWORD", "ChangeMe@1234")
+                admin_password = os.getenv("ADMIN_INITIAL_PASSWORD")
+                if not admin_password:
+                    # Never fall back to a hardcoded secret: generate a one-off
+                    # random password and surface it once in the boot log.
+                    import secrets
+                    admin_password = secrets.token_urlsafe(12)
+                    logger.warning(
+                        "ADMIN_INITIAL_PASSWORD not set — generated a random "
+                        "password for '%s': %s  (change it after first login)",
+                        admin_username, admin_password,
+                    )
                 db.add(models.User(
                     username=admin_username,
                     hashed_password=auth.get_password_hash(admin_password),
@@ -304,5 +314,8 @@ async def serve_spa(full_path: str):
         raise HTTPException(status_code=404, detail="Not found")
     index = os.path.join(FRONTEND_DIST, "index.html")
     if os.path.exists(index):
-        return FileResponse(index)
+        # index.html must never be cached: it references the hashed JS/CSS
+        # bundle, and a stale copy keeps browsers on the previous release.
+        # The hashed assets themselves are safe to cache forever.
+        return FileResponse(index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     raise HTTPException(status_code=404, detail="Frontend not built. Run npm run build.")

@@ -10,8 +10,7 @@ router = APIRouter(prefix="/api/discipline", tags=["Discipline"])
 WRITE_ROLES = {"admin", "principal", "teacher", "senior_teacher", "secretary"}
 
 
-def _serialize(r: models.DisciplinaryRecord, db: Session) -> dict:
-    student = db.query(models.Student).filter(models.Student.id == r.student_id).first()
+def _serialize(r: models.DisciplinaryRecord, student: models.Student | None) -> dict:
     return {
         "id": r.id,
         "student_id": r.student_id,
@@ -52,7 +51,14 @@ def list_records(
         q = q.filter(models.DisciplinaryRecord.student_id.in_(student_ids))
 
     records = q.order_by(models.DisciplinaryRecord.incident_date.desc()).all()
-    return [_serialize(r, db) for r in records]
+    # Single lookup for all referenced students — avoids an N+1 per record
+    students = {
+        s.id: s
+        for s in db.query(models.Student).filter(
+            models.Student.id.in_({r.student_id for r in records})
+        ).all()
+    } if records else {}
+    return [_serialize(r, students.get(r.student_id)) for r in records]
 
 
 @router.post("/", status_code=201)
@@ -88,7 +94,7 @@ def create_record(
                {"student_id": payload.student_id, "type": payload.incident_type})
     db.commit()
     db.refresh(record)
-    return _serialize(record, db)
+    return _serialize(record, student)
 
 
 @router.put("/{record_id}")
@@ -113,7 +119,8 @@ def update_record(
     log_action(db, current_user.id, "UPDATE", "discipline", record_id)
     db.commit()
     db.refresh(record)
-    return _serialize(record, db)
+    student = db.query(models.Student).filter(models.Student.id == record.student_id).first()
+    return _serialize(record, student)
 
 
 @router.delete("/{record_id}", status_code=204)

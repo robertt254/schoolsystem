@@ -20,22 +20,33 @@ def record_exam_results(
     if current_user.role not in WRITE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    upserted = 0
-    for entry in payload.results:
-        student = db.query(models.Student).filter(
-            models.Student.id == entry.student_id,
+    # Batch-fetch valid students and existing results once — avoids two
+    # queries per entry in the loop below.
+    entry_ids = [e.student_id for e in payload.results]
+    valid_ids = {
+        s.id
+        for s in db.query(models.Student.id).filter(
+            models.Student.id.in_(entry_ids),
             models.Student.is_deleted == False,
-        ).first()
-        if not student:
-            continue
-
-        existing = db.query(models.ExamResult).filter(
-            models.ExamResult.student_id == entry.student_id,
+        ).all()
+    }
+    existing_by_student = {
+        r.student_id: r
+        for r in db.query(models.ExamResult).filter(
+            models.ExamResult.student_id.in_(entry_ids),
             models.ExamResult.subject == payload.subject,
             models.ExamResult.exam_type == payload.exam_type,
             models.ExamResult.term == payload.term,
             models.ExamResult.academic_year == payload.academic_year,
-        ).first()
+        ).all()
+    }
+
+    upserted = 0
+    for entry in payload.results:
+        if entry.student_id not in valid_ids:
+            continue
+
+        existing = existing_by_student.get(entry.student_id)
 
         if existing:
             existing.marks = entry.marks

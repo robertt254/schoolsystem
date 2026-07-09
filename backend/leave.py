@@ -50,7 +50,14 @@ def list_leave_requests(
         q = q.filter(models.LeaveRequest.status == status)
 
     rows = q.order_by(models.LeaveRequest.created_at.desc()).all()
-    return [_enrich(r, db) for r in rows]
+    # Single lookup for all referenced staff — avoids an N+1 per request
+    staff_by_id = {
+        u.id: u
+        for u in db.query(models.User).filter(
+            models.User.id.in_({r.staff_id for r in rows})
+        ).all()
+    } if rows else {}
+    return [_enrich(r, db, staff_by_id.get(r.staff_id)) for r in rows]
 
 
 @router.put("/{request_id}/review")
@@ -104,8 +111,9 @@ def cancel_leave_request(
     return {"message": "Leave request cancelled"}
 
 
-def _enrich(row: models.LeaveRequest, db: Session) -> dict:
-    staff = db.query(models.User).filter(models.User.id == row.staff_id).first()
+def _enrich(row: models.LeaveRequest, db: Session, staff: models.User | None = None) -> dict:
+    if staff is None:
+        staff = db.query(models.User).filter(models.User.id == row.staff_id).first()
     return {
         "id": row.id,
         "staff_id": row.staff_id,

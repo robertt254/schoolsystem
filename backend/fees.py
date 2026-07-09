@@ -156,6 +156,34 @@ def _compute_allocation(db: Session, student, amount: float, current_term: str):
     return allocation, round(total_outstanding_before, 2), advance
 
 
+def _expected_fee_map(db: Session) -> dict:
+    """(grade_level, term) → configured tuition for the current year, in one query."""
+    year = datetime.now().year
+    rows = db.query(models.FeeStructure).filter(
+        models.FeeStructure.academic_year == year,
+        models.FeeStructure.fee_type == "Tuition",
+    ).all()
+    return {(r.grade_level, r.term): float(r.amount) for r in rows}
+
+
+def _expected_from_map(fee_map: dict, grade_level: str, term: str) -> float:
+    return fee_map.get((grade_level, term), CBC_TERMLY_FEES_FALLBACK.get(grade_level, 0.0))
+
+
+def _paid_map(db: Session, student_ids: list) -> dict:
+    """(student_id, term) → summed payments, in one grouped query."""
+    if not student_ids:
+        return {}
+    rows = db.query(
+        models.FeePayment.student_id,
+        models.FeePayment.term,
+        func.sum(models.FeePayment.amount).label("total"),
+    ).filter(models.FeePayment.student_id.in_(student_ids)).group_by(
+        models.FeePayment.student_id, models.FeePayment.term
+    ).all()
+    return {(r.student_id, r.term): float(r.total) for r in rows}
+
+
 def compute_effective_term_collection(db: Session, students: list, term: str) -> float:
     """
     Compute the portion of payments that count toward `term`.
@@ -163,19 +191,25 @@ def compute_effective_term_collection(db: Session, students: list, term: str) ->
     Each student's contribution is capped at their expected fee for the term.
     Overpayments from prior terms are brought in as rollover credit before capping.
     This prevents overpayments in Term 1 from inflating Term 1's completion %.
+
+    Batched: three queries total regardless of the number of students.
     """
+    if not students:
+        return 0.0
     term_num = TERM_ORDER.get(term, 1)
+    fee_map = _expected_fee_map(db)
+    paid = _paid_map(db, [s.id for s in students])
+    prior_terms = [TERM_BY_NUM[n] for n in range(1, term_num)]
+
     total = 0.0
     for s in students:
-        expected = _get_expected_fee(db, s.grade_level, term)
+        expected = _expected_from_map(fee_map, s.grade_level, term)
         if expected <= 0:
             continue
-        direct_paid = float(
-            db.query(func.sum(models.FeePayment.amount))
-            .filter(models.FeePayment.student_id == s.id, models.FeePayment.term == term)
-            .scalar() or 0.0
-        )
-        rollover = _get_rollover_credit(db, s.id, s.grade_level, term_num)
+        direct_paid = paid.get((s.id, term), 0.0)
+        cum_expected = sum(_expected_from_map(fee_map, s.grade_level, t) for t in prior_terms)
+        cum_paid = sum(paid.get((s.id, t), 0.0) for t in prior_terms)
+        rollover = max(0.0, round(cum_paid - cum_expected, 2))
         total += min(direct_paid + rollover, expected)
     return round(total, 2)
 

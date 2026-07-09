@@ -44,8 +44,9 @@ uvicorn main:app --reload --port 8000
 ```
 
 On first boot with an empty database, a default admin account is seeded from
-`ADMIN_USERNAME` / `ADMIN_INITIAL_PASSWORD` (defaults: `admin` /
-`ChangeMe@1234`). Change the password immediately after logging in.
+`ADMIN_USERNAME` / `ADMIN_INITIAL_PASSWORD`. If `ADMIN_INITIAL_PASSWORD` is
+not set, a random password is generated and printed once in the server log —
+there is no hardcoded default. Change the password immediately after logging in.
 
 Frontend:
 

@@ -49,6 +49,10 @@ def clean_db():
 
 @pytest.fixture
 def client():
+    # Re-install the override per test: the shared conftest client fixture
+    # clears app.dependency_overrides after tests in other files, which would
+    # otherwise wipe the module-level registration above.
+    app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
 
@@ -127,8 +131,9 @@ def test_create_student_unauthorized_role(client):
     assert response.status_code == 403
     assert response.json()["detail"] == "Not authorized to admit students"
 
-def test_create_student_duplicate_admission_number(client, auth_headers):
-    # First student
+def test_admission_numbers_ignore_client_input_and_never_duplicate(client, auth_headers):
+    """Admission numbers are system-generated and immutable: a client-supplied
+    value is ignored, and two students can never share a number."""
     student_data_1 = {
         "first_name": "Alice",
         "last_name": "Johnson",
@@ -137,8 +142,10 @@ def test_create_student_duplicate_admission_number(client, auth_headers):
     }
     response_1 = client.post("/api/students/", json=student_data_1, headers=auth_headers)
     assert response_1.status_code == 200
+    admn_1 = response_1.json()["admission_number"]
 
-    # Second student with same admission number
+    # Second student attempting the same admission number still succeeds and
+    # receives its own distinct system-generated number.
     student_data_2 = {
         "first_name": "Bob",
         "last_name": "Williams",
@@ -146,8 +153,12 @@ def test_create_student_duplicate_admission_number(client, auth_headers):
         "admission_number": "BONA-1234"
     }
     response_2 = client.post("/api/students/", json=student_data_2, headers=auth_headers)
-    assert response_2.status_code == 400
-    assert response_2.json()["detail"] == "Admission number already registered"
+    assert response_2.status_code == 200
+    admn_2 = response_2.json()["admission_number"]
+
+    assert admn_1.startswith("BONA-")
+    assert admn_2.startswith("BONA-")
+    assert admn_1 != admn_2
 
 def test_create_student_auto_generate_admission_number(client, auth_headers):
     student_data_1 = {

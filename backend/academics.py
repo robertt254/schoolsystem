@@ -29,14 +29,26 @@ def record_scores(
     if missing:
         raise HTTPException(status_code=404, detail=f"Student IDs not found: {sorted(missing)}")
 
+    # Batch-fetch the assessments this payload could update — avoids one
+    # lookup query per score in the loop below. Enum fields are normalised to
+    # their string values so dict keys match the DB rows.
+    def _key(student_id, year, term, area, strand):
+        return (student_id, str(year), str(getattr(term, "value", term)), area, strand)
+
+    existing_map = {
+        _key(a.student_id, a.academic_year, a.term, a.learning_area, a.strand): a
+        for a in db.query(models.Assessment).filter(
+            models.Assessment.student_id.in_(student_ids),
+            models.Assessment.term.in_({s.term for s in scores}),
+            models.Assessment.academic_year.in_({s.academic_year for s in scores}),
+        ).all()
+    }
+
     for score in scores:
-        existing = db.query(models.Assessment).filter(
-            models.Assessment.student_id == score.student_id,
-            models.Assessment.academic_year == score.academic_year,
-            models.Assessment.term == score.term,
-            models.Assessment.learning_area == score.learning_area,
-            models.Assessment.strand == score.strand,
-        ).first()
+        existing = existing_map.get(
+            _key(score.student_id, score.academic_year, score.term,
+                 score.learning_area, score.strand)
+        )
 
         if existing:
             existing.score = score.score
@@ -74,34 +86,35 @@ def get_grade_assessments(
         .order_by(models.Student.last_name)
         .all()
     )
+    if not students:
+        return []
 
-    result = []
-    for s in students:
-        q = db.query(models.Assessment).filter(
-            models.Assessment.student_id == s.id,
-            models.Assessment.term == term,
-        )
-        if academic_year:
-            q = q.filter(models.Assessment.academic_year == academic_year)
-        assessments = q.all()
+    # One query for the whole grade — avoids an N+1 per student
+    q = db.query(models.Assessment).filter(
+        models.Assessment.student_id.in_([s.id for s in students]),
+        models.Assessment.term == term,
+    )
+    if academic_year:
+        q = q.filter(models.Assessment.academic_year == academic_year)
 
-        # scores[learning_area][strand] = {score, remarks}
-        scores: dict = {}
-        for a in assessments:
-            if a.learning_area not in scores:
-                scores[a.learning_area] = {}
-            scores[a.learning_area][a.strand] = {
-                "score": a.score,
-                "remarks": a.remarks,
-            }
+    # scores_by_student[student_id][learning_area][strand] = {score, remarks}
+    scores_by_student: dict = {}
+    for a in q.all():
+        areas = scores_by_student.setdefault(a.student_id, {})
+        areas.setdefault(a.learning_area, {})[a.strand] = {
+            "score": a.score,
+            "remarks": a.remarks,
+        }
 
-        result.append({
+    return [
+        {
             "student_id": s.id,
             "student_name": f"{s.first_name} {s.last_name}",
             "admission_number": s.admission_number,
-            "scores": scores,
-        })
-    return result
+            "scores": scores_by_student.get(s.id, {}),
+        }
+        for s in students
+    ]
 
 
 @router.get("/report-card/{student_id}/{term}")

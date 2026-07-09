@@ -1,4 +1,6 @@
 <script setup>
+import SchoolBadge from './SchoolBadge.vue';
+
 const props = defineProps({
     // { receipt_number, student_name, admission_number, grade_level, amount,
     //   payment_type, term, payment_date, recorded_by, allocation? }
@@ -21,8 +23,12 @@ const printReceipt = () => window.print();
 
         <!-- Branded receipt -->
         <div class="text-center border-b-2 border-navy pb-4 mb-4">
-            <h2 class="text-2xl font-extrabold text-navy">BONA SCHOOL KENYA</h2>
-            <p class="text-xs uppercase tracking-widest text-gray-500">Official Fee Receipt</p>
+            <div class="flex justify-center mb-2">
+                <SchoolBadge :size="72" />
+            </div>
+            <h2 class="text-2xl font-extrabold text-navy">THE BONA SCHOOL</h2>
+            <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">In Truth We Excel</p>
+            <p class="text-xs uppercase tracking-widest text-gray-500 mt-1">Official Fee Receipt</p>
         </div>
 
         <div class="flex justify-between text-sm mb-4">
