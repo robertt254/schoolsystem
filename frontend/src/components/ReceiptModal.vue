@@ -1,9 +1,11 @@
 <script setup>
+import { ref, onMounted } from 'vue';
+import api from '../api';
 import SchoolBadge from './SchoolBadge.vue';
 
 const props = defineProps({
-    // { receipt_number, student_name, admission_number, grade_level, amount,
-    //   payment_type, term, payment_date, recorded_by, allocation? }
+    // { receipt_number, student_id, student_name, admission_number, grade_level,
+    //   amount, payment_type, term, payment_date, recorded_by, allocation? }
     payment: { type: Object, required: true }
 });
 const emit = defineEmits(['close']);
@@ -11,6 +13,20 @@ const emit = defineEmits(['close']);
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
 const printReceipt = () => window.print();
+
+// Remaining balance for the school's current term, fetched live so the
+// receipt always reflects the position after this payment.
+const balance = ref(null);
+onMounted(async () => {
+    if (!props.payment.student_id) return;
+    try {
+        const termRes = await api.getCurrentTerm();
+        const res = await api.getStudentFeeBalance(props.payment.student_id, termRes.data.term);
+        balance.value = res.data;
+    } catch (e) {
+        console.error('Could not load current-term balance for receipt', e);
+    }
+});
 </script>
 
 <template>
@@ -52,6 +68,12 @@ const printReceipt = () => window.print();
         <div class="flex justify-between items-center border-t-2 border-b-2 border-navy py-3 mb-4">
             <span class="font-bold text-navy uppercase text-sm">Amount Paid</span>
             <span class="text-2xl font-extrabold text-navy">{{ money(payment.amount) }}</span>
+        </div>
+
+        <div v-if="balance" class="flex justify-between items-center bg-gray-bg rounded-md p-3 mb-4 text-sm">
+            <span class="text-gray-600">Remaining balance — {{ balance.term_checked }}</span>
+            <span v-if="balance.outstanding_balance > 0" class="font-bold text-red-accent">{{ money(balance.outstanding_balance) }}</span>
+            <span v-else class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Fully settled</span>
         </div>
 
         <div v-if="payment.allocation && payment.allocation.length" class="mb-4 text-sm">

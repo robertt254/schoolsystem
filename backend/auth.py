@@ -16,7 +16,9 @@ if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY environment variable is not set. Refusing to start.")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 120
+# Hard server-side session ceiling; the frontend additionally signs out idle
+# users after 15 minutes of inactivity.
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))
 
 router = APIRouter()
 

@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => {
     post: vi.fn().mockResolvedValue({ data: {} }),
     put: vi.fn().mockResolvedValue({ data: {} }),
     delete: vi.fn().mockResolvedValue({ data: {} }),
-    interceptors: { request: { use: vi.fn() } },
+    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
   };
   return {
     instance,
@@ -57,6 +57,24 @@ describe('axios setup', () => {
     // Token stored → Authorization: Bearer <token>
     localStorage.setItem('token', 'jwt-abc');
     expect(interceptor({ headers: {} }).headers.Authorization).toBe('Bearer jwt-abc');
+  });
+
+  it('registers a response interceptor that ends the session on 401', async () => {
+    expect(mocks.instance.interceptors.response.use).toHaveBeenCalledTimes(1);
+    const onError = mocks.instance.interceptors.response.use.mock.calls[0][1];
+
+    localStorage.setItem('token', 'stale-jwt');
+    localStorage.setItem('user_info', '{"role":"admin"}');
+
+    const err = { response: { status: 401 } };
+    await expect(onError(err)).rejects.toBe(err);
+    expect(localStorage.getItem('token')).toBeNull();
+    expect(localStorage.getItem('user_info')).toBeNull();
+
+    // Non-401 errors leave the session untouched
+    localStorage.setItem('token', 'valid-jwt');
+    await expect(onError({ response: { status: 500 } })).rejects.toBeTruthy();
+    expect(localStorage.getItem('token')).toBe('valid-jwt');
   });
 });
 

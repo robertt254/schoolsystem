@@ -1,8 +1,10 @@
 <script setup>
 import { useRoute } from 'vue-router';
 import Sidebar from './components/Sidebar.vue';
+import { useAutoLogout } from './composables/useAutoLogout';
 
 const route = useRoute();
+useAutoLogout();
 </script>
 
 <template>

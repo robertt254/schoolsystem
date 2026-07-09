@@ -11,6 +11,10 @@ const username = ref('');
 const password = ref('');
 const error = ref('');
 
+// One-time notice explaining why the user was signed out (idle / expired)
+const notice = ref(sessionStorage.getItem('logout_reason') || '');
+sessionStorage.removeItem('logout_reason');
+
 const handleLogin = async () => {
     error.value = '';
     const success = await authStore.login(username.value, password.value);
@@ -38,6 +42,9 @@ const handleLogin = async () => {
         <p class="mt-3 text-center text-sm text-gray-600">
           School Management System — sign in to your account
         </p>
+      </div>
+      <div v-if="notice" class="rounded-md bg-yellow-100 border border-yellow-200 px-4 py-3 text-sm text-yellow-800 text-center">
+        {{ notice }}
       </div>
       <form class="mt-8 space-y-6" @submit.prevent="handleLogin">
         <div class="rounded-md shadow-sm -space-y-px">

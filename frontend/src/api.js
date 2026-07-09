@@ -16,6 +16,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Any 401 means the token is expired or invalid: end the session immediately
+// so a stale login can never keep the UI open for someone else.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user_info');
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        sessionStorage.setItem('logout_reason', 'Your session expired — please sign in again.');
+        window.location.assign('/login');
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default {
   // ── Auth ──────────────────────────────────────────────────────────────────
   login(data) {

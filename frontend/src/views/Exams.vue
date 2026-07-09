@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import api from '../api';
+import { gradeLabel } from '../utils/grading';
 
 const grades = [
     "Play Group", "PP1", "PP2",
@@ -149,6 +150,7 @@ onMounted(() => {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adm No.</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Marks</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Evaluation</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
@@ -159,9 +161,17 @@ onMounted(() => {
                         <input v-model="r.marks" type="number" min="0" :max="filters.max_marks" step="0.5"
                                class="border border-gray-300 p-1.5 rounded-md w-28 text-sm focus:ring-navy focus:border-navy" />
                     </td>
+                    <td class="px-6 py-2 whitespace-nowrap">
+                        <span v-if="r.marks !== null && r.marks !== ''"
+                              class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                              :class="gradeLabel(r.marks, filters.max_marks).cls">
+                            {{ gradeLabel(r.marks, filters.max_marks).label }}
+                        </span>
+                        <span v-else class="text-gray-300 text-sm">—</span>
+                    </td>
                 </tr>
                 <tr v-if="entryRows.length === 0">
-                    <td colspan="3" class="px-6 py-8 text-center text-gray-500 text-sm">No students in this grade.</td>
+                    <td colspan="4" class="px-6 py-8 text-center text-gray-500 text-sm">No students in this grade.</td>
                 </tr>
             </tbody>
         </table>
@@ -193,7 +203,14 @@ onMounted(() => {
                         <td class="px-6 py-3 whitespace-nowrap text-sm font-bold text-navy">{{ row.position }}</td>
                         <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{{ row.student_name }}</td>
                         <td v-for="sub in resultsView.subjects" :key="sub" class="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-500">
-                            {{ row.scores[sub] ? row.scores[sub].marks : '—' }}
+                            <template v-if="row.scores[sub]">
+                                {{ row.scores[sub].marks }}
+                                <span class="ml-1 px-1.5 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                      :class="gradeLabel(row.scores[sub].marks, row.scores[sub].max_marks).cls">
+                                    {{ gradeLabel(row.scores[sub].marks, row.scores[sub].max_marks).abbr }}
+                                </span>
+                            </template>
+                            <span v-else>—</span>
                         </td>
                         <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ row.total_marks }}</td>
                         <td class="px-6 py-3 whitespace-nowrap text-sm text-right">

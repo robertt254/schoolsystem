@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../api';
 import SchoolBadge from '../components/SchoolBadge.vue';
+import { gradeLabel } from '../utils/grading';
 
 const route = useRoute();
 const students = ref([]);
@@ -131,6 +132,7 @@ onMounted(async () => {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exam</th>
                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Marks</th>
                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">%</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Evaluation</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
@@ -139,9 +141,15 @@ onMounted(async () => {
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ r.exam_type }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ r.marks }}/{{ r.max_marks }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ Math.round(r.marks / r.max_marks * 100) }}%</td>
+                    <td class="px-6 py-3 whitespace-nowrap">
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                              :class="gradeLabel(r.marks, r.max_marks).cls">
+                            {{ gradeLabel(r.marks, r.max_marks).abbr }} — {{ gradeLabel(r.marks, r.max_marks).label }}
+                        </span>
+                    </td>
                 </tr>
                 <tr v-if="examResults.length === 0">
-                    <td colspan="4" class="px-6 py-6 text-center text-gray-500 text-sm">No exam results for this term.</td>
+                    <td colspan="5" class="px-6 py-6 text-center text-gray-500 text-sm">No exam results for this term.</td>
                 </tr>
             </tbody>
         </table>

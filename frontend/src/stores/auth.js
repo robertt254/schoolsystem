@@ -51,11 +51,16 @@ export const useAuthStore = defineStore('auth', {
         }
       }
     },
-    logout() {
+    logout(reason) {
       this.user = null;
       this.token = null;
       localStorage.removeItem('token');
       localStorage.removeItem('user_info');
+      // Shown once on the login page (e.g. "signed out due to inactivity").
+      // Guard against DOM event objects when used directly as a click handler.
+      if (typeof reason === 'string' && reason) {
+        sessionStorage.setItem('logout_reason', reason);
+      }
     }
   }
 });
