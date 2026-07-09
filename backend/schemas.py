@@ -200,7 +200,20 @@ class UserBase(BaseModel):
     role: UserRole
 
 
-class UserCreate(UserBase):
+class StaffDetailsMixin(BaseModel):
+    """Personal, next-of-kin and bank fields shared by create/update/response."""
+    national_id: Optional[str] = Field(None, max_length=20)
+    phone: Optional[str] = Field(None, max_length=20)
+    email: Optional[str] = Field(None, max_length=100)
+    address: Optional[str] = Field(None, max_length=200)
+    next_of_kin_name: Optional[str] = Field(None, max_length=100)
+    next_of_kin_phone: Optional[str] = Field(None, max_length=20)
+    next_of_kin_relationship: Optional[str] = Field(None, max_length=50)
+    bank_name: Optional[str] = Field(None, max_length=100)
+    bank_account: Optional[str] = Field(None, max_length=50)
+
+
+class UserCreate(UserBase, StaffDetailsMixin):
     password: Optional[str] = Field(None, min_length=8)  # not required for non-portal roles
     job_title: Optional[str] = Field(None, max_length=100)
     contract_type: Optional[str] = Field(None, max_length=50)
@@ -214,7 +227,7 @@ class UserCreate(UserBase):
     deductions: Optional[float] = Field(0.0, ge=0)
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(StaffDetailsMixin):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     role: Optional[UserRole] = None
@@ -238,7 +251,7 @@ class UserUpdate(BaseModel):
         return v or None  # treat empty string as None
 
 
-class UserResponse(UserBase):
+class UserResponse(UserBase, StaffDetailsMixin):
     id: int
     role: str  # override UserBase enum — accept any role string stored in DB
     job_title: Optional[str] = None
@@ -631,6 +644,10 @@ class LeaveRequestCreate(BaseModel):
     start_date: date
     end_date: date
     reason: str = Field(..., min_length=1, max_length=500)
+    # Admin/principal only: file the request on behalf of another staff member
+    # (e.g. teachers and support staff, who have no portal login). Such
+    # requests are granted immediately by the filer.
+    staff_id: Optional[int] = None
 
 
 class LeaveRequestResponse(BaseModel):

@@ -238,6 +238,9 @@ export default {
   recordFeePayment(payment) {
     return api.post('/api/fees/', payment);
   },
+  recordBulkPayments(payments) {
+    return api.post('/api/fees/bulk', payments);
+  },
   getPaymentLog(limit = 500) {
     return api.get('/api/fees/log', { params: { limit } });
   },
@@ -373,5 +376,16 @@ export default {
   // ── Admin ─────────────────────────────────────────────────────────────────
   resetData(confirm, withFinance = false) {
     return api.post('/api/admin/reset-data', { confirm, with_finance: withFinance });
+  },
+
+  // ── Backups (system admin only) ───────────────────────────────────────────
+  listBackups() {
+    return api.get('/api/admin/backups/');
+  },
+  createBackup() {
+    return api.post('/api/admin/backups/');
+  },
+  downloadBackup(filename) {
+    return api.get(`/api/admin/backups/${filename}`, { responseType: 'blob' });
   }
 };

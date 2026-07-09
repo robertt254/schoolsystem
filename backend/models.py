@@ -17,6 +17,17 @@ class User(Base):
     kra_pin = Column(String(20), nullable=True)
     nssf_number = Column(String(30), nullable=True)
     nhif_number = Column(String(30), nullable=True)
+    # Personal & emergency contact details
+    national_id = Column(String(20), nullable=True)
+    phone = Column(String(20), nullable=True)
+    email = Column(String(100), nullable=True)
+    address = Column(String(200), nullable=True)
+    next_of_kin_name = Column(String(100), nullable=True)
+    next_of_kin_phone = Column(String(20), nullable=True)
+    next_of_kin_relationship = Column(String(50), nullable=True)
+    # Salary disbursement details
+    bank_name = Column(String(100), nullable=True)
+    bank_account = Column(String(50), nullable=True)
     accrued_leave_days = Column(Integer, nullable=False, default=21, server_default="21")
     basic_salary = Column(Numeric(10, 2), nullable=False, server_default="0")
     allowances = Column(Numeric(10, 2), nullable=False, server_default="0")

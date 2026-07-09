@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useRouter } from 'vue-router';
 import SchoolBadge from '../components/SchoolBadge.vue';
+import PasswordInput from '../components/PasswordInput.vue';
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -54,7 +55,8 @@ const handleLogin = async () => {
           </div>
           <div>
             <label for="password" class="sr-only">Password</label>
-            <input id="password" name="password" type="password" required v-model="password" class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-navy focus:border-navy focus:z-10 sm:text-sm" placeholder="Password">
+            <PasswordInput v-model="password" required placeholder="Password"
+                input-class="appearance-none rounded-none relative block w-full px-3 py-2 pr-14 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-navy focus:border-navy focus:z-10 sm:text-sm" />
           </div>
         </div>
 

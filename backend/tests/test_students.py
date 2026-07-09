@@ -138,7 +138,7 @@ def test_admission_numbers_ignore_client_input_and_never_duplicate(client, auth_
         "first_name": "Alice",
         "last_name": "Johnson",
         "grade_level": "Grade 3",
-        "admission_number": "BONA-1234"
+        "admission_number": "BNS-1234"
     }
     response_1 = client.post("/api/students/", json=student_data_1, headers=auth_headers)
     assert response_1.status_code == 200
@@ -150,14 +150,14 @@ def test_admission_numbers_ignore_client_input_and_never_duplicate(client, auth_
         "first_name": "Bob",
         "last_name": "Williams",
         "grade_level": "Grade 4",
-        "admission_number": "BONA-1234"
+        "admission_number": "BNS-1234"
     }
     response_2 = client.post("/api/students/", json=student_data_2, headers=auth_headers)
     assert response_2.status_code == 200
     admn_2 = response_2.json()["admission_number"]
 
-    assert admn_1.startswith("BONA-")
-    assert admn_2.startswith("BONA-")
+    assert admn_1.startswith("BNS-")
+    assert admn_2.startswith("BNS-")
     assert admn_1 != admn_2
 
 def test_create_student_auto_generate_admission_number(client, auth_headers):
@@ -169,7 +169,7 @@ def test_create_student_auto_generate_admission_number(client, auth_headers):
     response_1 = client.post("/api/students/", json=student_data_1, headers=auth_headers)
     assert response_1.status_code == 200
     admn_1 = response_1.json()["admission_number"]
-    assert admn_1.startswith("BONA-")
+    assert admn_1.startswith("BNS-")
 
     student_data_2 = {
         "first_name": "Diana",
@@ -179,5 +179,5 @@ def test_create_student_auto_generate_admission_number(client, auth_headers):
     response_2 = client.post("/api/students/", json=student_data_2, headers=auth_headers)
     assert response_2.status_code == 200
     admn_2 = response_2.json()["admission_number"]
-    assert admn_2.startswith("BONA-")
+    assert admn_2.startswith("BNS-")
     assert admn_1 != admn_2

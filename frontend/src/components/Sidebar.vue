@@ -37,6 +37,7 @@ const groups = computed(() => [
         key: 'finance', label: 'Finance', show: authStore.canFinance,
         links: [
             { to: '/finance', label: 'Finance Dashboard' },
+            { to: '/bulk-payments', label: 'Bulk Payments' },
             { to: '/defaulters', label: 'Defaulters' },
             { to: '/fee-statement', label: 'Fee Statement' },
             { to: '/fee-structure', label: 'Fee Structure' },

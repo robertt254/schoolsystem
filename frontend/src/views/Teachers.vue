@@ -2,28 +2,65 @@
 import { ref, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
+import { exportCsv } from '../utils/csvExport';
 
 const authStore = useAuthStore();
 const staff = ref([]);
 const message = ref('');
 
+const exportStaff = () => {
+    exportCsv('staff.csv',
+        [['name', 'Name'], ['username', 'Username'], ['role', 'Role'], ['job_title', 'Job Title'],
+         ['national_id', 'National ID'], ['phone', 'Phone'], ['email', 'Email'],
+         ['next_of_kin_name', 'Next of Kin'], ['next_of_kin_phone', 'NOK Phone'],
+         ['date_of_hire', 'Date of Hire'], ['leave_days_left', 'Leave Days Left']],
+        staff.value);
+};
+
 const PORTAL_ROLES = ['admin', 'principal', 'secretary', 'accountant', 'senior_teacher'];
+// "admin" is deliberately absent: there is exactly one system administrator
+// (seeded at first boot) and no user can ever be created or promoted into it.
 const ROLES = [
     { value: 'teacher', label: 'Teacher' },
     { value: 'senior_teacher', label: 'Senior Teacher' },
     { value: 'secretary', label: 'Secretary' },
     { value: 'accountant', label: 'Accountant' },
     { value: 'principal', label: 'Principal' },
-    { value: 'support_staff', label: 'Support Staff' },
-    { value: 'admin', label: 'System Admin' }
+    { value: 'support_staff', label: 'Support Staff' }
 ];
-const roleLabel = (r) => (ROLES.find(x => x.value === r)?.label) || r;
+const roleLabel = (r) => r === 'admin' ? 'System Admin' : (ROLES.find(x => x.value === r)?.label) || r;
 const isPortal = (r) => PORTAL_ROLES.includes(r);
 
 const blankForm = () => ({
     name: '', role: 'teacher', job_title: '', username: '', password: '',
     contract_type: '', date_of_hire: '', kra_pin: '', nssf_number: '', nhif_number: '',
+    national_id: '', phone: '', email: '', address: '',
+    next_of_kin_name: '', next_of_kin_phone: '', next_of_kin_relationship: '',
+    bank_name: '', bank_account: '',
     basic_salary: 0, allowances: 0, deductions: 0, accrued_leave_days: 21
+});
+
+// Fields shared verbatim between the create and update payloads
+const detailFields = (f) => ({
+    job_title: f.job_title || null,
+    contract_type: f.contract_type || null,
+    date_of_hire: f.date_of_hire || null,
+    kra_pin: f.kra_pin || null,
+    nssf_number: f.nssf_number || null,
+    nhif_number: f.nhif_number || null,
+    national_id: f.national_id || null,
+    phone: f.phone || null,
+    email: f.email || null,
+    address: f.address || null,
+    next_of_kin_name: f.next_of_kin_name || null,
+    next_of_kin_phone: f.next_of_kin_phone || null,
+    next_of_kin_relationship: f.next_of_kin_relationship || null,
+    bank_name: f.bank_name || null,
+    bank_account: f.bank_account || null,
+    basic_salary: parseFloat(f.basic_salary) || 0,
+    allowances: parseFloat(f.allowances) || 0,
+    deductions: parseFloat(f.deductions) || 0,
+    accrued_leave_days: parseInt(f.accrued_leave_days) || 21
 });
 const form = ref(blankForm());
 const isModalOpen = ref(false);
@@ -51,6 +88,11 @@ const openEdit = (s) => {
         username: s.username, password: '',
         contract_type: s.contract_type || '', date_of_hire: s.date_of_hire || '',
         kra_pin: s.kra_pin || '', nssf_number: s.nssf_number || '', nhif_number: s.nhif_number || '',
+        national_id: s.national_id || '', phone: s.phone || '', email: s.email || '',
+        address: s.address || '',
+        next_of_kin_name: s.next_of_kin_name || '', next_of_kin_phone: s.next_of_kin_phone || '',
+        next_of_kin_relationship: s.next_of_kin_relationship || '',
+        bank_name: s.bank_name || '', bank_account: s.bank_account || '',
         basic_salary: s.basic_salary || 0, allowances: s.allowances || 0, deductions: s.deductions || 0,
         accrued_leave_days: s.accrued_leave_days ?? 21
     };
@@ -62,15 +104,7 @@ const save = async () => {
     const f = form.value;
     try {
         if (editingId.value) {
-            const payload = {
-                name: f.name, role: f.role, job_title: f.job_title || null,
-                contract_type: f.contract_type || null, date_of_hire: f.date_of_hire || null,
-                kra_pin: f.kra_pin || null, nssf_number: f.nssf_number || null, nhif_number: f.nhif_number || null,
-                basic_salary: parseFloat(f.basic_salary) || 0,
-                allowances: parseFloat(f.allowances) || 0,
-                deductions: parseFloat(f.deductions) || 0,
-                accrued_leave_days: parseInt(f.accrued_leave_days) || 21
-            };
+            const payload = { name: f.name, role: f.role, ...detailFields(f) };
             if (f.password) payload.password = f.password;
             if (f.username) payload.username = f.username;
             await api.updateStaff(editingId.value, payload);
@@ -85,16 +119,7 @@ const save = async () => {
                 name: f.name,
                 role: f.role,
                 ...(isPortal(f.role) ? { password: f.password } : {}),
-                job_title: f.job_title || null,
-                contract_type: f.contract_type || null,
-                date_of_hire: f.date_of_hire || null,
-                kra_pin: f.kra_pin || null,
-                nssf_number: f.nssf_number || null,
-                nhif_number: f.nhif_number || null,
-                basic_salary: parseFloat(f.basic_salary) || 0,
-                allowances: parseFloat(f.allowances) || 0,
-                deductions: parseFloat(f.deductions) || 0,
-                accrued_leave_days: parseInt(f.accrued_leave_days) || 21
+                ...detailFields(f)
             });
         }
         isModalOpen.value = false;
@@ -133,7 +158,10 @@ onMounted(load);
   <div class="p-8 max-w-7xl mx-auto relative">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold text-navy">Staff & HR</h1>
-        <button v-if="authStore.isAdmin" @click="openCreate" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light">Add Staff Member</button>
+        <div class="flex gap-4">
+            <button @click="exportStaff" :disabled="staff.length === 0" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">Export CSV</button>
+            <button v-if="authStore.isAdmin" @click="openCreate" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light">Add Staff Member</button>
+        </div>
     </div>
     <p v-if="message" class="mb-4 text-sm font-medium text-red-accent">{{ message }}</p>
 
@@ -154,7 +182,8 @@ onMounted(load);
           <tr v-for="s in staff" :key="s.id" class="hover:bg-gray-50">
             <td class="px-6 py-4 whitespace-nowrap">
                 <p class="text-sm font-medium text-gray-900">{{ s.name }}</p>
-                <p class="text-xs text-gray-500">@{{ s.username }}</p>
+                <p class="text-xs text-gray-500">@{{ s.username }}{{ s.phone ? ' · ' + s.phone : '' }}</p>
+                <p v-if="s.next_of_kin_name" class="text-xs text-gray-400">NOK: {{ s.next_of_kin_name }} {{ s.next_of_kin_phone || '' }}</p>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">{{ roleLabel(s.role) }}</span>
@@ -172,8 +201,8 @@ onMounted(load);
             <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{{ s.leave_days_left }} / {{ s.accrued_leave_days }}</td>
             <td v-if="authStore.isAdmin" class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button @click="openEdit(s)" class="text-navy hover:text-navy-light mx-1 font-bold underline">Edit</button>
-                <button v-if="s.can_login" @click="resetPassword(s)" class="text-navy hover:text-navy-light mx-1 font-bold underline">Reset PW</button>
-                <button @click="terminate(s)" class="text-red-accent hover:text-red-hover mx-1 font-bold underline">Terminate</button>
+                <button v-if="s.can_login && s.role !== 'admin'" @click="resetPassword(s)" class="text-navy hover:text-navy-light mx-1 font-bold underline">Reset PW</button>
+                <button v-if="s.role !== 'admin'" @click="terminate(s)" class="text-red-accent hover:text-red-hover mx-1 font-bold underline">Terminate</button>
             </td>
           </tr>
           <tr v-if="staff.length === 0">
@@ -198,7 +227,9 @@ onMounted(load);
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Role</label>
-                        <select v-model="form.role" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
+                        <input v-if="form.role === 'admin'" value="System Admin (fixed)" disabled
+                               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-gray-bg text-gray-500 sm:text-sm" />
+                        <select v-else v-model="form.role" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
                             <option v-for="r in ROLES" :key="r.value" :value="r.value">{{ r.label }}</option>
                         </select>
                     </div>
@@ -241,6 +272,40 @@ onMounted(load);
 
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 border-t pt-4">
                     <div>
+                        <label class="block text-sm font-medium text-gray-700">National ID No.</label>
+                        <input v-model="form.national_id" type="text" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Phone</label>
+                        <input v-model="form.phone" type="text" placeholder="+254..." class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email</label>
+                        <input v-model="form.email" type="email" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Home Address</label>
+                        <input v-model="form.address" type="text" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4 border-t pt-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Next of Kin</label>
+                        <input v-model="form.next_of_kin_name" type="text" placeholder="Full name" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Next of Kin Phone</label>
+                        <input v-model="form.next_of_kin_phone" type="text" placeholder="+254..." class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Relationship</label>
+                        <input v-model="form.next_of_kin_relationship" type="text" placeholder="e.g. Spouse" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 border-t pt-4">
+                    <div>
                         <label class="block text-sm font-medium text-gray-700">Contract</label>
                         <input v-model="form.contract_type" type="text" placeholder="Permanent" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
                     </div>
@@ -255,6 +320,17 @@ onMounted(load);
                     <div>
                         <label class="block text-sm font-medium text-gray-700">NHIF No.</label>
                         <input v-model="form.nhif_number" type="text" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 border-t pt-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Bank Name (for payroll)</label>
+                        <input v-model="form.bank_name" type="text" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Bank Account No.</label>
+                        <input v-model="form.bank_account" type="text" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
                     </div>
                 </div>
 

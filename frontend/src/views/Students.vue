@@ -2,8 +2,15 @@
 import { ref, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
+import { exportCsv } from '../utils/csvExport';
 
 const authStore = useAuthStore();
+
+const exportStudents = () => {
+    exportCsv('students.csv',
+        [['admission_number', 'Admission No'], ['name', 'Name'], ['grade', 'Grade'], ['guardian_contact', 'Guardian Contact']],
+        students.value);
+};
 const students = ref([]);
 const courses = ref([]);
 const blankStudent = () => ({
@@ -139,7 +146,7 @@ const addStudent = async () => {
       const res = await api.createStudent({
           first_name: f.first_name,
           last_name: f.last_name,
-          // Admission number is system-generated (BONA-XXXX) and immutable
+          // Admission number is system-generated (BNS-XXXX) and immutable
           grade_level: f.grade,
           date_of_birth: f.date_of_birth || null,
           gender: f.gender || null,
@@ -221,6 +228,7 @@ onMounted(() => {
   <div class="p-8 max-w-7xl mx-auto relative">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold text-navy">Students Management</h1>
+        <button @click="exportStudents" :disabled="students.length === 0" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">Export CSV</button>
     </div>
 
     <!-- Registration Form -->

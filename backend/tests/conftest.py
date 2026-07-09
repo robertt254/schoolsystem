@@ -1,3 +1,11 @@
+import os
+import tempfile
+
+# Must be set before `main` (and therefore `backup`) is imported: keep test
+# snapshots out of the repo and don't start the periodic scheduler thread.
+os.environ["BACKUP_DIR"] = tempfile.mkdtemp(prefix="bns_test_backups_")
+os.environ["BACKUP_ENABLED"] = "false"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -112,7 +120,7 @@ def sample_student(db_session):
     student = models.Student(
         first_name="Jane",
         last_name="Wanjiku",
-        admission_number="BONA-0001",
+        admission_number="BNS-0001",
         grade_level="Grade 1",
         status="Active",
     )

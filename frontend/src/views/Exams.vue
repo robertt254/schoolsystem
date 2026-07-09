@@ -39,12 +39,28 @@ const loadSubjects = async () => {
 const loadEntrySheet = async () => {
     message.value = '';
     try {
-        const res = await api.getStudents({ grade: filters.value.grade });
-        entryRows.value = res.data.map(s => ({
+        // Load the class list AND any marks already recorded for this
+        // grade/term/exam/subject, so re-opening a sheet shows saved marks
+        // instead of a blank grid (prevents double entry).
+        const [studentsRes, existingRes] = await Promise.all([
+            api.getStudents({ grade: filters.value.grade }),
+            api.getGradeExamResults(
+                filters.value.grade, filters.value.term,
+                filters.value.academic_year, filters.value.exam_type
+            ).catch(() => null)
+        ]);
+        const existing = {};
+        if (existingRes) {
+            for (const row of existingRes.data.students) {
+                const score = row.scores[filters.value.subject];
+                if (score) existing[row.student_id] = score.marks;
+            }
+        }
+        entryRows.value = studentsRes.data.map(s => ({
             student_id: s.id,
             student_name: `${s.first_name} ${s.last_name}`,
             admission_number: s.admission_number,
-            marks: null
+            marks: existing[s.id] ?? null
         }));
     } catch (e) { console.error(e); }
 };
@@ -85,15 +101,15 @@ const saveMarks = async () => {
     saving.value = false;
 };
 
-const onGradeChange = () => {
+const onGradeChange = async () => {
     filters.value.subject = '';
-    loadSubjects();
+    await loadSubjects();   // sets the default subject before prefilling marks
     loadEntrySheet();
     loadResults();
 };
 
-onMounted(() => {
-    loadSubjects();
+onMounted(async () => {
+    await loadSubjects();
     loadEntrySheet();
     loadResults();
 });
@@ -117,26 +133,26 @@ onMounted(() => {
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Term</label>
-                <select v-model="filters.term" @change="loadResults" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                <select v-model="filters.term" @change="loadResults(); loadEntrySheet()" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
                 </select>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Exam</label>
-                <select v-model="filters.exam_type" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                <select v-model="filters.exam_type" @change="loadEntrySheet" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option v-for="e in examTypes" :key="e" :value="e">{{ e }}</option>
                 </select>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                <select v-model="filters.subject" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                <select v-model="filters.subject" @change="loadEntrySheet" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option value="">Select subject</option>
                     <option v-for="s in subjects" :key="s.id" :value="s.name">{{ s.name }}</option>
                 </select>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Year</label>
-                <input v-model="filters.academic_year" type="number" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+                <input v-model="filters.academic_year" type="number" @change="loadResults(); loadEntrySheet()" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Out of</label>

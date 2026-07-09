@@ -10,7 +10,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
 
 def setup_data(db):
-    student = Student(first_name="Test", last_name="Student", admission_number="BONA-0001", gender="M", date_of_birth=datetime.strptime("2010-01-01", "%Y-%m-%d").date(), grade_level="Grade 1", guardian_name="Parent", guardian_phone="123")
+    student = Student(first_name="Test", last_name="Student", admission_number="BNS-0001", gender="M", date_of_birth=datetime.strptime("2010-01-01", "%Y-%m-%d").date(), grade_level="Grade 1", guardian_name="Parent", guardian_phone="123")
     db.add(student)
     db.commit()
     db.refresh(student)

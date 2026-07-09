@@ -470,7 +470,7 @@ def get_payment_log(
         else:
             deleted_by = "Unknown"
 
-        # Parse student label stored as "First Last (BONA-0001)"
+        # Parse student label stored as "First Last (BNS-0001)"
         student_raw = detail.get("student", "")
         student_name = student_raw.split("(")[0].strip() if "(" in student_raw else student_raw
         adm = student_raw[student_raw.find("(")+1:student_raw.find(")")] if "(" in student_raw else ""

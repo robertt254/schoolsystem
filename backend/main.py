@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 import auth
 import admin
+import backup
 import models
 import students
 import fees
@@ -121,6 +122,16 @@ async def startup():
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS guardian2_phone VARCHAR(20)",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS address         VARCHAR(200)",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS previous_school VARCHAR(200)",
+        # Staff personal, next-of-kin and bank fields
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS national_id              VARCHAR(20)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone                    VARCHAR(20)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email                    VARCHAR(100)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS address                  VARCHAR(200)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_name         VARCHAR(100)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_phone        VARCHAR(20)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS next_of_kin_relationship VARCHAR(50)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_name                VARCHAR(100)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_account             VARCHAR(50)",
         # HR fields on users table
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS job_title         VARCHAR(100)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS contract_type     VARCHAR(50)",
@@ -251,6 +262,9 @@ async def startup():
     except Exception as exc:
         logger.warning("Admin seed skipped: %s", exc)
 
+    # Periodic database snapshots for the eventual move to local hosting
+    backup.start_backup_scheduler()
+
     if os.path.exists(FRONTEND_DIST):
         logger.info("Frontend dist found at %s", FRONTEND_DIST)
     else:
@@ -275,6 +289,7 @@ app.include_router(library.router)
 app.include_router(events.router)
 app.include_router(events.cal_router)
 app.include_router(discipline.router)
+app.include_router(backup.router)
 app.include_router(admin.router)
 
 

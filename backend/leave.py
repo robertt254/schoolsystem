@@ -17,15 +17,34 @@ def apply_for_leave(
     if request.end_date < request.start_date:
         raise HTTPException(status_code=400, detail="End date must be on or after start date")
 
+    # Teachers and support staff have no portal login, so the admin or
+    # principal can file (and thereby grant) leave on their behalf.
+    target_id = request.staff_id or current_user.id
+    on_behalf = target_id != current_user.id
+    if on_behalf:
+        if current_user.role not in {"admin", "principal"}:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the admin or principal can record leave for another staff member",
+            )
+        if not db.query(models.User).filter(models.User.id == target_id).first():
+            raise HTTPException(status_code=404, detail="Staff member not found")
+
     new_req = models.LeaveRequest(
-        staff_id=current_user.id,
-        **request.model_dump(),
-        status="pending",
+        staff_id=target_id,
+        **request.model_dump(exclude={"staff_id"}),
+        # Filed by the approver themselves → granted immediately
+        status="approved" if on_behalf else "pending",
     )
+    if on_behalf:
+        new_req.reviewed_by = current_user.id
+        new_req.reviewed_at = datetime.now(timezone.utc)
+
     db.add(new_req)
     db.flush()
     log_action(db, current_user.id, "CREATE", "leave", new_req.id,
-               {"leave_type": request.leave_type, "start": str(request.start_date)})
+               {"leave_type": request.leave_type, "start": str(request.start_date),
+                **({"on_behalf_of": target_id} if on_behalf else {})})
     db.commit()
     db.refresh(new_req)
     return _enrich(new_req, db)

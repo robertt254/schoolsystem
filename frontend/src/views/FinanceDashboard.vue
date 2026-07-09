@@ -3,6 +3,15 @@ import { ref, watch, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
+import { exportCsv } from '../utils/csvExport';
+
+const exportPaymentLog = () => {
+    exportCsv('payment_log.csv',
+        [['receipt_number', 'Receipt'], ['student_name', 'Student'], ['admission_number', 'Admission No'],
+         ['grade_level', 'Grade'], ['payment_type', 'Type'], ['term', 'Term'],
+         ['amount', 'Amount'], ['payment_date', 'Date'], ['recorded_by', 'Recorded By'], ['status', 'Status']],
+        paymentLog.value);
+};
 
 const authStore = useAuthStore();
 const dashboardStats = ref({
@@ -277,7 +286,10 @@ onMounted(() => {
 
     <!-- Payment log -->
     <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-        <h2 class="text-xl font-bold text-navy p-6 pb-3">Payment Log</h2>
+        <div class="flex justify-between items-center p-6 pb-3">
+            <h2 class="text-xl font-bold text-navy">Payment Log</h2>
+            <button @click="exportPaymentLog" :disabled="paymentLog.length === 0" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50 text-sm">Export CSV</button>
+        </div>
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>

@@ -29,6 +29,39 @@ def verify_staff_reader(current_user: models.User = Depends(auth.get_current_use
     return current_user
 
 
+def _user_response(user: models.User, days_used: int, include_salary: bool) -> schemas.UserResponse:
+    """Single place that shapes a staff record for the API."""
+    entitlement = user.accrued_leave_days if user.accrued_leave_days is not None else 21
+    return schemas.UserResponse(
+        id=user.id,
+        username=user.username,
+        name=user.name,
+        role=user.role,
+        job_title=user.job_title,
+        contract_type=user.contract_type,
+        date_of_hire=user.date_of_hire,
+        kra_pin=user.kra_pin,
+        nssf_number=user.nssf_number,
+        nhif_number=user.nhif_number,
+        national_id=user.national_id,
+        phone=user.phone,
+        email=user.email,
+        address=user.address,
+        next_of_kin_name=user.next_of_kin_name,
+        next_of_kin_phone=user.next_of_kin_phone,
+        next_of_kin_relationship=user.next_of_kin_relationship,
+        bank_name=user.bank_name if include_salary else None,
+        bank_account=user.bank_account if include_salary else None,
+        accrued_leave_days=entitlement,
+        leave_days_used=days_used,
+        leave_days_left=max(0, entitlement - days_used),
+        basic_salary=float(user.basic_salary or 0) if include_salary else 0.0,
+        allowances=float(user.allowances or 0) if include_salary else 0.0,
+        deductions=float(user.deductions or 0) if include_salary else 0.0,
+        can_login=user.can_login,
+    )
+
+
 @router.get("/", response_model=list[schemas.UserResponse])
 def get_all_staff(db: Session = Depends(get_db), current_user: models.User = Depends(verify_staff_reader)):
     users = db.query(models.User).order_by(models.User.name).all()
@@ -48,30 +81,10 @@ def get_all_staff(db: Session = Depends(get_db), current_user: models.User = Dep
         days = (row.end_date - row.start_date).days + 1
         leave_days_by_staff[row.staff_id] = leave_days_by_staff.get(row.staff_id, 0) + days
     include_salary = current_user.role in {"admin", "accountant"}
-    result = []
-    for user in users:
-        days_used = leave_days_by_staff.get(user.id, 0)
-        entitlement = user.accrued_leave_days if user.accrued_leave_days is not None else 21
-        result.append(schemas.UserResponse(
-            id=user.id,
-            username=user.username,
-            name=user.name,
-            role=user.role,
-            job_title=user.job_title,
-            contract_type=user.contract_type,
-            date_of_hire=user.date_of_hire,
-            kra_pin=user.kra_pin,
-            nssf_number=user.nssf_number,
-            nhif_number=user.nhif_number,
-            accrued_leave_days=entitlement,
-            leave_days_used=days_used,
-            leave_days_left=max(0, entitlement - days_used),
-            basic_salary=float(user.basic_salary or 0) if include_salary else 0.0,
-            allowances=float(user.allowances or 0) if include_salary else 0.0,
-            deductions=float(user.deductions or 0) if include_salary else 0.0,
-            can_login=user.can_login,
-        ))
-    return result
+    return [
+        _user_response(user, leave_days_by_staff.get(user.id, 0), include_salary)
+        for user in users
+    ]
 
 
 @router.post("/", response_model=schemas.UserResponse)
@@ -80,6 +93,14 @@ def create_staff(
     db: Session = Depends(get_db),
     admin: models.User = Depends(verify_hr_manager),
 ):
+    # There is exactly ONE system administrator (seeded at first boot) and it
+    # stays that way: no user — not even the admin — can create another one.
+    if user.role == "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="There is only one system administrator account and another cannot be created",
+        )
+
     is_portal = user.role in PORTAL_ROLES
 
     if is_portal:
@@ -112,6 +133,15 @@ def create_staff(
         kra_pin=user.kra_pin,
         nssf_number=user.nssf_number,
         nhif_number=user.nhif_number,
+        national_id=user.national_id,
+        phone=user.phone,
+        email=user.email,
+        address=user.address,
+        next_of_kin_name=user.next_of_kin_name,
+        next_of_kin_phone=user.next_of_kin_phone,
+        next_of_kin_relationship=user.next_of_kin_relationship,
+        bank_name=user.bank_name,
+        bank_account=user.bank_account,
         accrued_leave_days=user.accrued_leave_days if user.accrued_leave_days is not None else 21,
         basic_salary=user.basic_salary or 0,
         allowances=user.allowances or 0,
@@ -124,27 +154,7 @@ def create_staff(
                {"username": user.username, "role": user.role})
     db.commit()
     db.refresh(new_user)
-    entitlement = new_user.accrued_leave_days if new_user.accrued_leave_days is not None else 21
-    include_salary = admin.role in {"admin", "accountant"}
-    return schemas.UserResponse(
-        id=new_user.id,
-        username=new_user.username,
-        name=new_user.name,
-        role=new_user.role,
-        job_title=new_user.job_title,
-        contract_type=new_user.contract_type,
-        date_of_hire=new_user.date_of_hire,
-        kra_pin=new_user.kra_pin,
-        nssf_number=new_user.nssf_number,
-        nhif_number=new_user.nhif_number,
-        accrued_leave_days=entitlement,
-        leave_days_used=0,
-        leave_days_left=entitlement,
-        basic_salary=float(new_user.basic_salary or 0) if include_salary else 0.0,
-        allowances=float(new_user.allowances or 0) if include_salary else 0.0,
-        deductions=float(new_user.deductions or 0) if include_salary else 0.0,
-        can_login=new_user.can_login,
-    )
+    return _user_response(new_user, 0, admin.role in {"admin", "accountant"})
 
 
 @router.put("/{user_id}", response_model=schemas.UserResponse)
@@ -162,6 +172,13 @@ def update_staff(
         raise HTTPException(status_code=403, detail="Only an admin can edit another admin account")
 
     update_data = user_update.model_dump(exclude_unset=True)
+
+    # Single-admin invariant: nobody can be promoted to system administrator,
+    # and the one admin account can never lose the role.
+    if update_data.get("role") == "admin" and db_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No user can be promoted to system administrator")
+    if db_user.role == "admin" and update_data.get("role") not in (None, "admin"):
+        raise HTTPException(status_code=400, detail="The system administrator's role cannot be changed")
     if "password" in update_data:
         update_data["hashed_password"] = auth.get_password_hash(update_data.pop("password"))
 
@@ -186,27 +203,7 @@ def update_staff(
         .all()
     )
     days_used = sum((l.end_date - l.start_date).days + 1 for l in approved_leaves)
-    entitlement = db_user.accrued_leave_days if db_user.accrued_leave_days is not None else 21
-    include_salary = admin.role in {"admin", "accountant"}
-    return schemas.UserResponse(
-        id=db_user.id,
-        username=db_user.username,
-        name=db_user.name,
-        role=db_user.role,
-        job_title=db_user.job_title,
-        contract_type=db_user.contract_type,
-        date_of_hire=db_user.date_of_hire,
-        kra_pin=db_user.kra_pin,
-        nssf_number=db_user.nssf_number,
-        nhif_number=db_user.nhif_number,
-        accrued_leave_days=entitlement,
-        leave_days_used=days_used,
-        leave_days_left=max(0, entitlement - days_used),
-        basic_salary=float(db_user.basic_salary or 0) if include_salary else 0.0,
-        allowances=float(db_user.allowances or 0) if include_salary else 0.0,
-        deductions=float(db_user.deductions or 0) if include_salary else 0.0,
-        can_login=db_user.can_login,
-    )
+    return _user_response(db_user, days_used, admin.role in {"admin", "accountant"})
 
 
 @router.delete("/{user_id}")
@@ -222,9 +219,9 @@ def terminate_staff(
     if not db_user:
         raise HTTPException(status_code=404, detail="Staff member not found")
 
-    # Only admins can terminate other admin accounts
-    if db_user.role == "admin" and admin.role != "admin":
-        raise HTTPException(status_code=403, detail="Only an admin can terminate another admin account")
+    # The single system administrator account can never be terminated
+    if db_user.role == "admin":
+        raise HTTPException(status_code=403, detail="The system administrator account cannot be terminated")
 
     log_action(db, admin.id, "DELETE", "staff", user_id,
                {"username": db_user.username, "role": db_user.role})
@@ -247,8 +244,13 @@ def reset_staff_password(
     if not db_user:
         raise HTTPException(status_code=404, detail="Staff member not found")
 
-    if db_user.role == "admin" and admin.role != "admin":
-        raise HTTPException(status_code=403, detail="Only an admin can reset another admin's password")
+    # Nobody can reset the system administrator's password — the admin
+    # changes it themselves via Change Password.
+    if db_user.role == "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="The system administrator's password can only be changed by the administrator themselves",
+        )
 
     db_user.hashed_password = auth.get_password_hash(payload.new_password)
     log_action(db, admin.id, "UPDATE", "staff", user_id,

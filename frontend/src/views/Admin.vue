@@ -24,6 +24,44 @@ const selectedIds = ref([]);
 const resetConfirm = ref('');
 const resetFinance = ref(false);
 
+// Data backups (system admin only) — for migration to local hosting
+const backups = ref([]);
+const backupBusy = ref(false);
+const fmtSize = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+
+const loadBackups = async () => {
+    if (!authStore.isSystemAdmin) return;
+    try {
+        const res = await api.listBackups();
+        backups.value = res.data;
+    } catch (e) { console.error(e); }
+};
+
+const createBackup = async () => {
+    backupBusy.value = true;
+    try {
+        await api.createBackup();
+        await loadBackups();
+    } catch (e) {
+        window.alert(e.response?.data?.detail || 'Backup failed.');
+    }
+    backupBusy.value = false;
+};
+
+const downloadBackup = async (filename) => {
+    try {
+        const res = await api.downloadBackup(filename);
+        const url = URL.createObjectURL(res.data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        window.alert(e.response?.data?.detail || 'Download failed.');
+    }
+};
+
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleString() : '—';
 
 const loadLogs = async () => {
@@ -107,6 +145,7 @@ onMounted(() => {
     loadLogs();
     loadArchived();
     loadPromoStudents();
+    loadBackups();
 });
 </script>
 
@@ -229,6 +268,45 @@ onMounted(() => {
                 </tr>
                 <tr v-if="logs.length === 0">
                     <td colspan="4" class="px-6 py-6 text-center text-gray-500 text-sm">No audit entries.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Data backups -->
+    <div v-if="authStore.isSystemAdmin" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h2 class="text-xl font-bold text-navy">Data Backups</h2>
+            <button @click="createBackup" :disabled="backupBusy" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">
+                {{ backupBusy ? 'Backing up…' : 'Create Backup Now' }}
+            </button>
+        </div>
+        <p class="text-sm text-gray-600 mb-4">
+            Full snapshots of every record, taken automatically every 24 hours (last 7 kept).
+            Download a snapshot and restore it into a local database with
+            <span class="font-mono text-xs bg-gray-bg px-1 rounded">python restore_backup.py &lt;file&gt; --wipe</span>
+            when moving the system in-house. Only the system administrator can access these.
+        </p>
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Snapshot</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <tr v-for="b in backups" :key="b.filename" class="hover:bg-gray-50">
+                    <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ b.filename }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ new Date(b.created_at).toLocaleString() }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ fmtSize(b.size_bytes) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-right text-sm font-medium">
+                        <button @click="downloadBackup(b.filename)" class="text-navy hover:text-navy-light font-bold underline">Download</button>
+                    </td>
+                </tr>
+                <tr v-if="backups.length === 0">
+                    <td colspan="4" class="px-6 py-6 text-center text-gray-500 text-sm">No snapshots yet — click "Create Backup Now".</td>
                 </tr>
             </tbody>
         </table>

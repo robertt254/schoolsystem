@@ -5,9 +5,11 @@ import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
 const requests = ref([]);
+const staff = ref([]);
 const filterStatus = ref('');
 const message = ref('');
 const newRequest = ref({
+    staff_id: '',   // '' = myself; admins/principal can pick any staff member
     leave_type: 'Annual',
     start_date: '',
     end_date: '',
@@ -22,14 +24,34 @@ const load = async () => {
     } catch (e) { console.error(e); }
 };
 
+// Teachers and support staff have no portal login — the admin/principal
+// grants their leave from here, so load the staff list for the selector.
+const loadStaff = async () => {
+    if (!authStore.isAdmin) return;
+    try {
+        const res = await api.getStaff();
+        staff.value = res.data;
+    } catch (e) { console.error(e); }
+};
+
 const apply = async () => {
     const r = newRequest.value;
     if (!r.start_date || !r.end_date || !r.reason) return;
     message.value = '';
+    const onBehalf = Boolean(r.staff_id);
     try {
-        await api.applyForLeave(r);
-        newRequest.value = { leave_type: 'Annual', start_date: '', end_date: '', reason: '' };
-        message.value = 'Leave request submitted.';
+        await api.applyForLeave({
+            leave_type: r.leave_type,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            reason: r.reason,
+            ...(onBehalf ? { staff_id: parseInt(r.staff_id) } : {})
+        });
+        const grantee = onBehalf ? staff.value.find(s => s.id === parseInt(r.staff_id))?.name : null;
+        newRequest.value = { staff_id: '', leave_type: 'Annual', start_date: '', end_date: '', reason: '' };
+        message.value = onBehalf
+            ? `Leave granted for ${grantee || 'staff member'}.`
+            : 'Leave request submitted.';
         load();
     } catch (e) {
         message.value = e.response?.data?.detail || 'Failed to submit request.';
@@ -57,7 +79,10 @@ const cancel = async (req) => {
 
 const days = (r) => Math.round((new Date(r.end_date) - new Date(r.start_date)) / 86400000) + 1;
 
-onMounted(load);
+onMounted(() => {
+    load();
+    loadStaff();
+});
 </script>
 
 <template>
@@ -72,10 +97,19 @@ onMounted(load);
         </select>
     </div>
 
-    <!-- Apply -->
+    <!-- Apply / Grant -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Apply for Leave</h2>
+        <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">{{ newRequest.staff_id ? 'Grant Leave to Staff' : 'Apply for Leave' }}</h2>
         <form @submit.prevent="apply" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div v-if="authStore.isAdmin">
+                <label class="block text-sm font-medium text-gray-700 mb-1">For</label>
+                <select v-model="newRequest.staff_id" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option value="">Myself</option>
+                    <option v-for="s in staff.filter(x => x.username !== authStore.user?.username)" :key="s.id" :value="s.id">
+                        {{ s.name }}{{ s.can_login ? '' : ' (no portal account)' }}
+                    </option>
+                </select>
+            </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Leave Type</label>
                 <select v-model="newRequest.leave_type" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
@@ -90,13 +124,16 @@ onMounted(load);
                 <label class="block text-sm font-medium text-gray-700 mb-1">To</label>
                 <input v-model="newRequest.end_date" type="date" required class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
             </div>
-            <div>
+            <div :class="authStore.isAdmin ? 'md:col-span-4' : ''">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Reason</label>
                 <input v-model="newRequest.reason" type="text" required class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
             </div>
             <div class="md:col-span-4">
-                <button type="submit" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light w-full md:w-auto">Submit Request</button>
+                <button type="submit" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light w-full md:w-auto">
+                    {{ newRequest.staff_id ? 'Grant Leave' : 'Submit Request' }}
+                </button>
                 <span v-if="message" class="ml-4 text-sm font-medium" :class="message.startsWith('Leave') ? 'text-green-600' : 'text-red-accent'">{{ message }}</span>
+                <p v-if="newRequest.staff_id" class="text-xs text-gray-400 mt-2">Leave filed on behalf of a staff member is granted immediately and counts against their leave days.</p>
             </div>
         </form>
     </div>

@@ -73,3 +73,38 @@ FastAPI backend on one web service.
    the new `https://<service>.onrender.com` URL.
 
 Health check endpoint: `GET /health`. API docs: `/docs`.
+
+## Backups & moving to local hosting
+
+The system snapshots **every table to a JSON backup every 24 hours** (last 7
+kept) and the system administrator can create/download snapshots any time from
+**Admin Tools → Data Backups**. Configure with `BACKUP_INTERVAL_HOURS`,
+`BACKUP_KEEP`, `BACKUP_DIR`, `BACKUP_ENABLED`.
+
+To migrate from Render to a locally hosted database:
+
+1. Log in as the system admin and download the latest snapshot from
+   Admin Tools → Data Backups.
+2. On the local machine, point `DATABASE_URL` at the local database and run:
+
+   ```bash
+   DATABASE_URL=postgresql://user:pass@localhost/bona_local \
+       python backend/restore_backup.py bns_backup_XXXXXXXXTXXXXXXZ.json --wipe
+   ```
+
+3. Start the backend against that same `DATABASE_URL` — all students, fees,
+   staff, results and logs carry over, and PostgreSQL id sequences are advanced
+   automatically.
+
+Note: Render's free-tier disk is ephemeral, so snapshots on the server vanish
+on redeploy — download the ones you want to keep. The live data itself is
+always safe in Postgres.
+
+## Security model notes
+
+- There is exactly **one system administrator** (seeded at first boot). No
+  user — including the admin — can create another admin, promote anyone to
+  admin, change or terminate the admin account, or reset the admin's password.
+  The admin changes their own password via Change Password.
+- Admission numbers (`BNS-0001`, …) are system-generated, unique and immutable.
+- Idle sessions are signed out automatically after 15 minutes.

@@ -27,3 +27,6 @@ dist-ssr/
 
 # Claude Code local settings
 .claude/
+
+# Database backup snapshots
+backend/backups/

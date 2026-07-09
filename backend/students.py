@@ -136,7 +136,7 @@ def get_class_roster(
 def _generate_admission_number(db: Session) -> str:
     last = (
         db.query(models.Student)
-        .filter(models.Student.admission_number.like("BONA-%"))
+        .filter(models.Student.admission_number.like("BNS-%"))
         .with_for_update()
         .order_by(models.Student.id.desc())
         .first()
@@ -148,7 +148,7 @@ def _generate_admission_number(db: Session) -> str:
             seq = 1
     else:
         seq = 1
-    return f"BONA-{seq:04d}"
+    return f"BNS-{seq:04d}"
 
 
 @router.post("/", response_model=schemas.StudentResponse)
@@ -167,7 +167,7 @@ def create_student(
         models.Student.admission_number == admission_number
     ).first():
         seq = int(admission_number.split("-")[-1]) + 1
-        admission_number = f"BONA-{seq:04d}"
+        admission_number = f"BNS-{seq:04d}"
 
     data = student.model_dump()
     data["admission_number"] = admission_number

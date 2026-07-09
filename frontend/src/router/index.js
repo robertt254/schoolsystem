@@ -24,6 +24,7 @@ import Events from '../views/Events.vue'
 import Sms from '../views/Sms.vue'
 import Admin from '../views/Admin.vue'
 import FeeStatement from '../views/FeeStatement.vue'
+import BulkPayments from '../views/BulkPayments.vue'
 import Reports from '../views/Reports.vue'
 
 const routes = [
@@ -49,6 +50,7 @@ const routes = [
   { path: '/expenses', component: Expenses, meta: { requiresFinance: true } },
   { path: '/budgets', component: Budgets, meta: { requiresFinance: true } },
   { path: '/fee-statement', component: FeeStatement, meta: { requiresFinance: true } },
+  { path: '/bulk-payments', component: BulkPayments, meta: { requiresFinance: true } },
   { path: '/reports', component: Reports, meta: { requiresAdmin: true } },
 
   // People & office
