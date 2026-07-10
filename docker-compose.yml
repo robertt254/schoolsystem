@@ -1,0 +1,57 @@
+# On-premises hosting for Bona School Kenya — one command brings up the app
+# and its PostgreSQL database on a school server:
+#
+#     docker compose up -d --build
+#
+# The app is then reachable from every computer on the local network at
+#     http://<server-ip>:8000
+#
+# LAN-only by design: as long as you do NOT create a port-forwarding rule on
+# the router, nothing here is reachable from the internet. For authorized
+# remote computers, install a VPN such as Tailscale on this server and on the
+# remote machines (see README — "Hosting on your local network").
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bona_school
+      POSTGRES_USER: bona
+      POSTGRES_PASSWORD: change-this-db-password
+    volumes:
+      - bona_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bona -d bona_school"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://bona:change-this-db-password@db:5432/bona_school
+      # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+      SECRET_KEY: change-this-to-a-long-random-string
+      ALLOWED_ORIGINS: http://localhost:8000
+      ADMIN_USERNAME: admin
+      # Set before FIRST boot to choose the admin password (otherwise a random
+      # one is generated and printed once in `docker compose logs web`):
+      # ADMIN_INITIAL_PASSWORD: choose-a-strong-password
+      # Break-glass: uncomment, restart, log in, then remove and restart again:
+      # ADMIN_RECOVERY_PASSWORD: temporary-recovery-password
+      BACKUP_DIR: /app/backups
+      BACKUP_INTERVAL_HOURS: "24"
+      BACKUP_KEEP: "14"
+    volumes:
+      # Backups survive container rebuilds — unlike Render's ephemeral disk
+      - bona_backups:/app/backups
+
+volumes:
+  bona_pgdata:
+  bona_backups:

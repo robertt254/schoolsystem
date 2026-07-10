@@ -32,10 +32,20 @@ export const useAuthStore = defineStore('auth', {
         this.user = { username, ...response.data.user_info };
         localStorage.setItem('token', this.token);
         localStorage.setItem('user_info', JSON.stringify(this.user));
-        return true;
+        return { ok: true };
       } catch (error) {
         console.error('Login failed', error);
-        return false;
+        // Surface the real cause — a blanket "invalid credentials" hides
+        // rate-limiting (429), revoked portal access (403) and outages.
+        let message = 'Invalid username or password';
+        if (error.response?.status === 429) {
+          message = 'Too many attempts — wait a minute and try again.';
+        } else if (error.response?.data?.detail) {
+          message = error.response.data.detail;
+        } else if (!error.response) {
+          message = 'Cannot reach the server — check the connection.';
+        }
+        return { ok: false, message };
       }
     },
     async fetchUser() {

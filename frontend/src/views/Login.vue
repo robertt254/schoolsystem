@@ -18,11 +18,11 @@ sessionStorage.removeItem('logout_reason');
 
 const handleLogin = async () => {
     error.value = '';
-    const success = await authStore.login(username.value, password.value);
-    if (success) {
+    const result = await authStore.login(username.value, password.value);
+    if (result.ok) {
         router.push('/');
     } else {
-        error.value = 'Invalid username or password';
+        error.value = result.message;
     }
 };
 </script>

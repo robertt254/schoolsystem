@@ -267,13 +267,16 @@ def get_audit_logs(
     date_from: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="ISO date YYYY-MM-DD"),
     limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
     if current_user.role not in {"admin", "principal"}:
         raise HTTPException(status_code=403, detail="Not authorized to view audit logs")
 
-    q = db.query(models.AuditLog)
+    q = db.query(models.AuditLog, models.User).outerjoin(
+        models.User, models.AuditLog.user_id == models.User.id
+    )
     if action:
         q = q.filter(models.AuditLog.action == action.upper())
     if resource:
@@ -285,16 +288,17 @@ def get_audit_logs(
     if date_to:
         q = q.filter(models.AuditLog.timestamp <= f"{date_to}T23:59:59")
 
-    logs = q.order_by(models.AuditLog.timestamp.desc()).limit(limit).all()
+    rows = q.order_by(models.AuditLog.timestamp.desc()).offset(offset).limit(limit).all()
     return [
         {
-            "id": l.id,
-            "user_id": l.user_id,
-            "action": l.action,
-            "resource": l.resource,
-            "resource_id": l.resource_id,
-            "detail": l.detail,
-            "timestamp": l.timestamp,
+            "id": log.id,
+            "user_id": log.user_id,
+            "user_name": user.name if user else "System",
+            "action": log.action,
+            "resource": log.resource,
+            "resource_id": log.resource_id,
+            "detail": log.detail,
+            "timestamp": log.timestamp,
         }
-        for l in logs
+        for log, user in rows
     ]

@@ -2,10 +2,14 @@
 import { ref, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
+import { exportCsv } from '../utils/csvExport';
 
 const authStore = useAuthStore();
 const logs = ref([]);
 const logFilter = ref({ action: '', resource: '' });
+const logsPageSize = 20;
+const moreLogsAvailable = ref(false);
+const exportDate = ref(new Date().toISOString().slice(0, 10));
 const archived = ref([]);
 const message = ref('');
 
@@ -64,13 +68,43 @@ const downloadBackup = async (filename) => {
 
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleString() : '—';
 
+const _logParams = () => {
+    const params = {};
+    if (logFilter.value.action) params.action = logFilter.value.action;
+    if (logFilter.value.resource) params.resource = logFilter.value.resource;
+    return params;
+};
+
 const loadLogs = async () => {
     try {
-        const params = { limit: 100 };
-        if (logFilter.value.action) params.action = logFilter.value.action;
-        if (logFilter.value.resource) params.resource = logFilter.value.resource;
-        const res = await api.getAuditLogs(params);
+        const res = await api.getAuditLogs({ ..._logParams(), limit: logsPageSize, offset: 0 });
         logs.value = res.data;
+        moreLogsAvailable.value = res.data.length === logsPageSize;
+    } catch (e) { console.error(e); }
+};
+
+const loadMoreLogs = async () => {
+    try {
+        const res = await api.getAuditLogs({ ..._logParams(), limit: logsPageSize, offset: logs.value.length });
+        logs.value = [...logs.value, ...res.data];
+        moreLogsAvailable.value = res.data.length === logsPageSize;
+    } catch (e) { console.error(e); }
+};
+
+// Export one day's full audit trail as CSV
+const exportDayLogs = async () => {
+    try {
+        const res = await api.getAuditLogs({
+            date_from: exportDate.value, date_to: exportDate.value, limit: 500
+        });
+        if (!res.data.length) {
+            window.alert(`No audit entries on ${exportDate.value}.`);
+            return;
+        }
+        exportCsv(`audit_log_${exportDate.value}.csv`,
+            [['timestamp', 'Time'], ['user_name', 'User'], ['action', 'Action'],
+             ['resource', 'Resource'], ['resource_id', 'Record ID'], ['detail', 'Detail']],
+            res.data);
     } catch (e) { console.error(e); }
 };
 
@@ -234,7 +268,7 @@ onMounted(() => {
     <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
         <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 p-6 pb-3">
             <h2 class="text-xl font-bold text-navy">Audit Log</h2>
-            <div class="flex gap-3">
+            <div class="flex flex-wrap gap-3 items-center">
                 <select v-model="logFilter.action" @change="loadLogs" class="border border-gray-300 p-2 rounded-md bg-white text-sm focus:ring-navy focus:border-navy">
                     <option value="">All actions</option>
                     <option>CREATE</option>
@@ -243,12 +277,17 @@ onMounted(() => {
                 </select>
                 <input v-model="logFilter.resource" @keyup.enter="loadLogs" type="text" placeholder="Resource e.g. fee, student" class="border border-gray-300 p-2 rounded-md text-sm focus:ring-navy focus:border-navy" />
                 <button @click="loadLogs" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light text-sm">Filter</button>
+                <span class="border-l border-gray-200 pl-3 flex gap-2 items-center">
+                    <input v-model="exportDate" type="date" class="border border-gray-300 p-2 rounded-md text-sm focus:ring-navy focus:border-navy" />
+                    <button @click="exportDayLogs" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light text-sm">Export Day CSV</button>
+                </span>
             </div>
         </div>
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resource</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Detail</th>
@@ -257,6 +296,7 @@ onMounted(() => {
             <tbody class="bg-white divide-y divide-gray-200">
                 <tr v-for="l in logs" :key="l.id" class="hover:bg-gray-50">
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ dateFmt(l.timestamp) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{{ l.user_name }}</td>
                     <td class="px-6 py-3 whitespace-nowrap">
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                               :class="{ 'bg-green-100 text-green-800': l.action === 'CREATE', 'bg-blue-100 text-blue-800': l.action === 'UPDATE', 'bg-red-100 text-red-800': l.action === 'DELETE' }">
@@ -267,10 +307,13 @@ onMounted(() => {
                     <td class="px-6 py-3 text-sm text-gray-500 max-w-md truncate">{{ l.detail }}</td>
                 </tr>
                 <tr v-if="logs.length === 0">
-                    <td colspan="4" class="px-6 py-6 text-center text-gray-500 text-sm">No audit entries.</td>
+                    <td colspan="5" class="px-6 py-6 text-center text-gray-500 text-sm">No audit entries.</td>
                 </tr>
             </tbody>
         </table>
+        <div v-if="moreLogsAvailable" class="p-4 text-center border-t">
+            <button @click="loadMoreLogs" class="text-navy hover:text-navy-light font-bold underline text-sm">Show 20 more</button>
+        </div>
     </div>
 
     <!-- Data backups -->

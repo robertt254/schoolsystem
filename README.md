@@ -100,6 +100,60 @@ Note: Render's free-tier disk is ephemeral, so snapshots on the server vanish
 on redeploy — download the ones you want to keep. The live data itself is
 always safe in Postgres.
 
+## Hosting on your local network (LAN-only, no internet exposure)
+
+Run the whole system on a school server with Docker:
+
+```bash
+# on the server, from the repo root — edit the passwords in docker-compose.yml first
+docker compose up -d --build
+```
+
+Then, to reach it from **every computer on the LAN**:
+
+1. Give the server a fixed address (a DHCP reservation on the router, or a
+   static IP such as `192.168.1.50`).
+2. Allow inbound TCP port 8000 in the server's firewall for the
+   **private/local network profile only**.
+3. Every LAN computer uses `http://192.168.1.50:8000` (bookmark it).
+
+It stays **off the internet automatically** as long as you do not create a
+port-forwarding/DMZ rule for the server on your router — that's the only way
+LAN services become publicly reachable.
+
+For **authorized remote computers** (e.g. the director working from home),
+use a VPN instead of exposing the server:
+
+- Install [Tailscale](https://tailscale.com) (free tier) on the server and on
+  each authorized remote computer, signed into the same account.
+- Remote machines then open `http://<server-tailscale-ip>:8000` — traffic is
+  end-to-end encrypted WireGuard, and only devices you approved in the
+  Tailscale admin console can connect. Nothing is opened on the router.
+
+To migrate the data from Render: download the latest snapshot from
+Admin Tools → Data Backups, then load it into the local database:
+
+```bash
+docker compose cp bns_backup_XXXX.json web:/tmp/backup.json
+docker compose exec web python backend/restore_backup.py /tmp/backup.json --wipe
+```
+
+Local backups are written to a Docker volume every 24 h and survive rebuilds.
+
+## Admin lockout recovery (forgot password)
+
+If the system administrator cannot log in, whoever controls the hosting
+environment (Render dashboard or the local server) can reset the password —
+no email required:
+
+1. Set the environment variable `ADMIN_RECOVERY_PASSWORD` to a temporary
+   password (Render: service → Environment; local: uncomment it in
+   `docker-compose.yml`).
+2. Restart the service. The log prints the admin **username** and confirms
+   the reset.
+3. Log in with that temporary password, change it via **Change Password**,
+   then **remove the variable** and restart again.
+
 ## Security model notes
 
 - There is exactly **one system administrator** (seeded at first boot). No

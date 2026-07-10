@@ -262,6 +262,29 @@ async def startup():
     except Exception as exc:
         logger.warning("Admin seed skipped: %s", exc)
 
+    # ── Break-glass admin recovery ────────────────────────────────────────────
+    # If the system administrator is locked out (forgotten/changed password),
+    # set ADMIN_RECOVERY_PASSWORD in the environment and restart: the single
+    # admin account's password is reset to it and portal access re-enabled.
+    # Only someone with access to the hosting environment (Render dashboard /
+    # server) can do this. REMOVE the variable immediately after logging in.
+    recovery_password = os.getenv("ADMIN_RECOVERY_PASSWORD")
+    if recovery_password:
+        try:
+            with SessionLocal() as db:
+                admin_account = db.query(models.User).filter(models.User.role == "admin").first()
+                if admin_account:
+                    admin_account.hashed_password = auth.get_password_hash(recovery_password)
+                    admin_account.can_login = True
+                    db.commit()
+                    logger.warning(
+                        "ADMIN RECOVERY: password for admin username '%s' was reset from "
+                        "ADMIN_RECOVERY_PASSWORD. Remove that environment variable NOW.",
+                        admin_account.username,
+                    )
+        except Exception as exc:
+            logger.warning("Admin recovery skipped: %s", exc)
+
     # Periodic database snapshots for the eventual move to local hosting
     backup.start_backup_scheduler()
 
