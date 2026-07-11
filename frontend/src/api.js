@@ -338,6 +338,9 @@ export default {
   getPettyCash() {
     return api.get('/api/finance/petty-cash');
   },
+  getTermAccountability(year) {
+    return api.get('/api/finance/term-accountability', { params: year ? { year } : {} });
+  },
   createPettyCash(tx) {
     return api.post('/api/finance/petty-cash', tx);
   },

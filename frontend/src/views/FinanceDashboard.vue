@@ -5,6 +5,24 @@ import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import { exportCsv } from '../utils/csvExport';
 
+// Per-term accountability table (fees vs expenses vs payroll vs petty cash)
+const accountability = ref(null);
+const loadAccountability = async () => {
+    try {
+        const res = await api.getTermAccountability(academicYear.value);
+        accountability.value = res.data;
+    } catch (e) { console.error(e); }
+};
+
+const exportAccountability = () => {
+    if (!accountability.value) return;
+    exportCsv(`term_accountability_${accountability.value.academic_year}.csv`,
+        [['term', 'Term'], ['fees_collected', 'Fees Collected'], ['expenses', 'Expenses'],
+         ['payroll', 'Payroll'], ['petty_cash_in', 'Petty Cash In'],
+         ['petty_cash_out', 'Petty Cash Out'], ['net', 'Net']],
+        [...accountability.value.terms, { term: 'TOTAL', ...accountability.value.totals }]);
+};
+
 const exportPaymentLog = () => {
     exportCsv('payment_log.csv',
         [['receipt_number', 'Receipt'], ['student_name', 'Student'], ['admission_number', 'Admission No'],
@@ -172,9 +190,10 @@ const deletePayment = async (p) => {
     }
 };
 
-onMounted(() => {
-    loadDashboard();
+onMounted(async () => {
+    await loadDashboard();   // resolves the academic year first
     loadStudents();
+    loadAccountability();
 });
 </script>
 
@@ -288,6 +307,52 @@ onMounted(() => {
                 <span class="text-xs text-gray-500 mt-1">{{ m.month }}</span>
             </div>
         </div>
+    </div>
+
+    <!-- Term accountability -->
+    <div v-if="accountability" class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+        <div class="flex justify-between items-center p-6 pb-3">
+            <h2 class="text-xl font-bold text-navy">Term Accountability · {{ accountability.academic_year }}</h2>
+            <button @click="exportAccountability" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light text-sm">Export CSV</button>
+        </div>
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Term</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Fees Collected</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expenses</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Payroll</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Petty Cash In</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Petty Cash Out</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Net</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <tr v-for="row in accountability.terms" :key="row.term" class="hover:bg-gray-50">
+                    <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ row.term }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-green-600 font-semibold">{{ money(row.fees_collected) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ money(row.expenses) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ money(row.payroll) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ money(row.petty_cash_in) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ money(row.petty_cash_out) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-bold" :class="row.net >= 0 ? 'text-green-600' : 'text-red-accent'">{{ money(row.net) }}</td>
+                </tr>
+                <tr class="bg-gray-50 font-bold">
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-navy">TOTAL</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-green-600">{{ money(accountability.totals.fees_collected) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-700">{{ money(accountability.totals.expenses) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-700">{{ money(accountability.totals.payroll) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-700">{{ money(accountability.totals.petty_cash_in) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-700">{{ money(accountability.totals.petty_cash_out) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-right" :class="accountability.totals.net >= 0 ? 'text-green-600' : 'text-red-accent'">{{ money(accountability.totals.net) }}</td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="px-6 py-3 text-xs text-gray-400 border-t">
+            Net = fees − expenses − payroll − petty cash out. Expenses, payroll and petty cash are assigned to
+            terms by their dates using the school calendar; petty cash top-ups (In) are informational since they
+            usually come out of collected fees.
+        </p>
     </div>
 
     <!-- Payment log -->

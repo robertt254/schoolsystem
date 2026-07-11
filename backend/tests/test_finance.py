@@ -153,6 +153,57 @@ def test_void_payroll_month_admin_only(as_admin, as_accountant, db_session):
     assert r.status_code == 403
 
 
+def test_term_accountability_totals(as_admin, db_session, sample_student):
+    """Fees, expenses and petty cash roll up per term with a correct net."""
+    from datetime import datetime
+    year = datetime.now().year
+
+    # A Term 1 fee payment (dated inside Term 1: Feb 10)
+    db_session.add(models.FeePayment(
+        student_id=sample_student.id, amount=10000, payment_type="Tuition",
+        term="Term 1", recorded_by="Test",
+        payment_date=datetime(year, 2, 10)))
+    db_session.commit()
+
+    as_admin.post("/api/finance/expenses", json={
+        "amount": 2000, "category": "Utilities", "justification": "Water"})
+    as_admin.post("/api/finance/petty-cash", json={
+        "transaction_type": "IN", "amount": 3000, "description": "Top-up"})
+    as_admin.post("/api/finance/petty-cash", json={
+        "transaction_type": "OUT", "amount": 500, "description": "Stationery"})
+
+    r = as_admin.get("/api/finance/term-accountability", params={"year": year})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["academic_year"] == year
+    assert [row["term"] for row in body["terms"]] == ["Term 1", "Term 2", "Term 3"]
+
+    t1 = body["terms"][0]
+    assert t1["fees_collected"] == 10000
+
+    totals = body["totals"]
+    assert totals["fees_collected"] == 10000
+    assert totals["expenses"] == 2000
+    assert totals["petty_cash_in"] == 3000
+    assert totals["petty_cash_out"] == 500
+    # Net = fees − expenses − payroll − petty cash out
+    assert totals["net"] == 10000 - 2000 - 0 - 500
+
+
+def test_term_accountability_requires_finance_role(client, db_session):
+    import models as m
+    from auth import get_password_hash
+    import auth as auth_module
+    from main import app
+    teacher = m.User(username="acct_teacher", hashed_password=get_password_hash("irrelevant-pw"),
+                     name="Acct Teacher", role="teacher", can_login=False)
+    db_session.add(teacher)
+    db_session.commit()
+    db_session.refresh(teacher)
+    app.dependency_overrides[auth_module.get_current_user] = lambda: teacher
+    assert client.get("/api/finance/term-accountability").status_code == 403
+
+
 def test_void_payroll_month(as_admin, db_session):
     staff = _add_staff(db_session, "voided_teacher", 20000)
     as_admin.post("/api/finance/payroll/run-month", json={

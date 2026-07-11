@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, extract
 from database import get_db
 import models, schemas, auth
 from audit import log_action
@@ -351,6 +351,82 @@ def delete_budget(
 
 
 # ── Petty Cash ─────────────────────────────────────────────────────────────────
+
+@router.get("/term-accountability")
+def term_accountability(
+    year: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_finance),
+):
+    """Per-term totals of fees collected, expenses, payroll and petty cash for
+    accountability/auditing. Fees use each payment's term; expenses, payroll
+    and petty cash are bucketed into terms by their dates using the school
+    calendar (a date in a holiday gap counts toward the next term)."""
+    from events import _term_ranges
+
+    year = year or datetime.now().year
+    ranges, _ = _term_ranges(db, year)
+    terms = ["Term 1", "Term 2", "Term 3"]
+
+    def bucket(d) -> str:
+        if isinstance(d, datetime):
+            d = d.date()
+        for t in terms:
+            rng = ranges.get(t)
+            if rng and rng[0] <= d <= rng[1]:
+                return t
+        for t in terms:   # holiday gap → the next upcoming term
+            rng = ranges.get(t)
+            if rng and d < rng[0]:
+                return t
+        return "Term 3"
+
+    data = {t: {"fees_collected": 0.0, "expenses": 0.0, "payroll": 0.0,
+                "petty_cash_in": 0.0, "petty_cash_out": 0.0} for t in terms}
+
+    fee_rows = db.query(
+        models.FeePayment.term, func.sum(models.FeePayment.amount)
+    ).filter(
+        extract("year", models.FeePayment.payment_date) == year
+    ).group_by(models.FeePayment.term).all()
+    for term, total in fee_rows:
+        if term in data:
+            data[term]["fees_collected"] = float(total or 0)
+
+    for e in db.query(models.Expense).filter(
+        extract("year", models.Expense.expense_date) == year
+    ).all():
+        data[bucket(e.expense_date)]["expenses"] += float(e.amount)
+
+    for p in db.query(models.Payroll).filter(
+        models.Payroll.payment_month.like(f"{year}-%")
+    ).all():
+        month = int(p.payment_month.split("-")[1])
+        data[bucket(date(year, month, 15))]["payroll"] += float(p.net_pay)
+
+    for tx in db.query(models.PettyCashTransaction).filter(
+        extract("year", models.PettyCashTransaction.transaction_date) == year
+    ).all():
+        key = "petty_cash_in" if tx.transaction_type == "IN" else "petty_cash_out"
+        data[bucket(tx.transaction_date)][key] += float(tx.amount)
+
+    rows = []
+    totals = {"fees_collected": 0.0, "expenses": 0.0, "payroll": 0.0,
+              "petty_cash_in": 0.0, "petty_cash_out": 0.0, "net": 0.0}
+    for t in terms:
+        d = data[t]
+        net = round(d["fees_collected"] - d["expenses"] - d["payroll"] - d["petty_cash_out"], 2)
+        row = {"term": t, **{k: round(v, 2) for k, v in d.items()}, "net": net}
+        rows.append(row)
+        for k in totals:
+            totals[k] += row[k]
+
+    return {
+        "academic_year": year,
+        "terms": rows,
+        "totals": {k: round(v, 2) for k, v in totals.items()},
+    }
+
 
 @router.get("/petty-cash")
 def get_petty_cash(
