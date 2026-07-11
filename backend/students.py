@@ -181,6 +181,42 @@ def create_student(
     return new_student
 
 
+@router.post("/bulk", status_code=201)
+def bulk_import_students(
+    students: list[schemas.StudentCreate],
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Register many students in one call — for migrating paper/spreadsheet
+    records. Admission numbers are system-generated per row, same as single
+    admissions."""
+    if current_user.role not in WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized to admit students")
+    if len(students) > 500:
+        raise HTTPException(status_code=400, detail="Bulk limit is 500 students per request")
+
+    created = 0
+    for entry in students:
+        admission_number = _generate_admission_number(db)
+        while db.query(models.Student).filter(
+            models.Student.admission_number == admission_number
+        ).first():
+            seq = int(admission_number.split("-")[-1]) + 1
+            admission_number = f"BNS-{seq:04d}"
+
+        data = entry.model_dump()
+        data["admission_number"] = admission_number
+        new_student = models.Student(**data)
+        db.add(new_student)
+        db.flush()
+        log_action(db, current_user.id, "CREATE", "student", new_student.id,
+                   {"admission_number": admission_number, "bulk_import": True})
+        created += 1
+
+    db.commit()
+    return {"created": created}
+
+
 @router.get("/", response_model=list[schemas.StudentResponse])
 def get_all_students(
     skip: int = 0,

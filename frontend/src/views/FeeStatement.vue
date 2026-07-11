@@ -8,6 +8,19 @@ import SchoolBadge from '../components/SchoolBadge.vue';
 const authStore = useAuthStore();
 const students = ref([]);
 const selectedStudent = ref('');
+const studentSearch = ref('');
+
+// Type-ahead filter so a statement can be pulled up quickly by name,
+// admission number or class
+const filteredStudents = computed(() => {
+    const q = studentSearch.value.trim().toLowerCase();
+    if (!q) return students.value;
+    return students.value.filter(s =>
+        `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) ||
+        (s.admission_number || '').toLowerCase().includes(q) ||
+        (s.grade_level || '').toLowerCase().includes(q)
+    );
+});
 const academicYear = ref(String(new Date().getFullYear()));
 const balances = ref([]);        // per-term balance breakdowns
 const payments = ref([]);
@@ -87,12 +100,17 @@ onMounted(loadStudents);
 
     <!-- Selector -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                <input v-model="studentSearch" type="text" placeholder="Name, admission no. or class…"
+                       class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+            </div>
             <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Student</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Student ({{ filteredStudents.length }} match{{ filteredStudents.length === 1 ? '' : 'es' }})</label>
                 <select v-model="selectedStudent" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option value="">Select student</option>
-                    <option v-for="s in students" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }} · {{ s.grade_level }})</option>
+                    <option v-for="s in filteredStudents" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }} · {{ s.grade_level }})</option>
                 </select>
             </div>
             <button @click="generate" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light">Generate Statement</button>

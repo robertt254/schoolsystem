@@ -53,6 +53,9 @@ export default {
   createStudent(student) {
     return api.post('/api/students/', student);
   },
+  bulkImportStudents(students) {
+    return api.post('/api/students/bulk', students);
+  },
   updateStudent(studentId, data) {
     return api.put(`/api/students/${studentId}`, data);
   },

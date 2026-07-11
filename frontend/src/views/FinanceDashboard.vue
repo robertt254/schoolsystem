@@ -30,7 +30,7 @@ const message = ref('');
 
 const paymentTypes = ['Tuition', 'Uniforms', 'Transport', 'Exam Fees'];
 const newInvoice = ref({ student_id: '', term: '', total_amount: '' });
-const newPayment = ref({ invoice_id: '', amount: '', payment_type: 'Tuition' });
+const newPayment = ref({ invoice_id: '', amount: '', payment_type: 'Tuition', payment_date: '' });
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleDateString() : '—';
@@ -105,9 +105,11 @@ const makePayment = async () => {
             amount: parseFloat(newPayment.value.amount),
             payment_type: newPayment.value.payment_type,
             term: currentTerm.value,
-            current_term: currentTerm.value
+            current_term: currentTerm.value,
+            // Backlog entry from paper records — blank means "now"
+            ...(newPayment.value.payment_date ? { payment_date: newPayment.value.payment_date } : {})
         });
-        newPayment.value = { invoice_id: '', amount: '', payment_type: 'Tuition' };
+        newPayment.value = { invoice_id: '', amount: '', payment_type: 'Tuition', payment_date: '' };
         message.value = `Payment recorded — receipt ${res.data.receipt_number}.`;
         // Show the branded receipt immediately for printing
         receipt.value = {
@@ -252,6 +254,10 @@ onMounted(() => {
                             <option v-for="t in paymentTypes" :key="t">{{ t }}</option>
                         </select>
                     </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Payment Date (blank = today; set when entering old paper records)</label>
+                    <input v-model="newPayment.payment_date" type="date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm">
                 </div>
                 <div v-if="smartTerm && smartTerm.outstanding_balance > 0" class="text-xs text-gray-600 bg-gray-bg rounded-md p-2">
                     Oldest unpaid term: <span class="font-semibold text-navy">{{ smartTerm.recommended_term }}</span> —

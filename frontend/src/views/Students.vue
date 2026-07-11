@@ -11,6 +11,95 @@ const exportStudents = () => {
         [['admission_number', 'Admission No'], ['name', 'Name'], ['grade', 'Grade'], ['guardian_contact', 'Guardian Contact']],
         students.value);
 };
+
+// ── CSV import — migrate the register from paper/spreadsheets ───────────────
+const IMPORT_COLUMNS = ['first_name', 'last_name', 'grade_level', 'date_of_birth', 'gender',
+    'guardian_name', 'guardian_phone', 'guardian2_name', 'guardian2_phone', 'address', 'previous_school'];
+const importInput = ref(null);
+const importMessage = ref('');
+const importing = ref(false);
+
+const downloadTemplate = () => {
+    exportCsv('student_import_template.csv',
+        IMPORT_COLUMNS.map(c => [c, c]),
+        [{ first_name: 'Jane', last_name: 'Wanjiku', grade_level: 'Grade 1', date_of_birth: '2018-03-14',
+           gender: 'Female', guardian_name: 'Alice Wanjiku', guardian_phone: '+254700000001',
+           guardian2_name: '', guardian2_phone: '', address: 'Kisumu', previous_school: '' }]);
+};
+
+// Minimal CSV parser that handles quoted fields with commas
+const parseCsv = (text) => {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inQuotes) {
+            if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+            else if (ch === '"') { inQuotes = false; }
+            else { field += ch; }
+        } else if (ch === '"') { inQuotes = true; }
+        else if (ch === ',') { row.push(field); field = ''; }
+        else if (ch === '\n' || ch === '\r') {
+            if (ch === '\r' && text[i + 1] === '\n') i++;
+            row.push(field); field = '';
+            if (row.some(v => v.trim() !== '')) rows.push(row);
+            row = [];
+        } else { field += ch; }
+    }
+    row.push(field);
+    if (row.some(v => v.trim() !== '')) rows.push(row);
+    return rows;
+};
+
+const importCsvFile = async (event) => {
+    const file = event.target.files[0];
+    event.target.value = '';   // allow re-selecting the same file
+    if (!file) return;
+    importMessage.value = '';
+    importing.value = true;
+    try {
+        const rows = parseCsv(await file.text());
+        const header = rows.shift().map(h => h.trim().toLowerCase());
+        const idx = Object.fromEntries(IMPORT_COLUMNS.map(c => [c, header.indexOf(c)]));
+        if (idx.first_name === -1 || idx.last_name === -1 || idx.grade_level === -1) {
+            importMessage.value = 'CSV must have first_name, last_name and grade_level columns — download the template.';
+            importing.value = false;
+            return;
+        }
+        const problems = [];
+        const payload = [];
+        rows.forEach((r, n) => {
+            const get = (c) => idx[c] === -1 ? '' : (r[idx[c]] || '').trim();
+            const grade = get('grade_level');
+            if (!get('first_name') || !get('last_name')) { problems.push(`Row ${n + 2}: missing name`); return; }
+            if (!grades.includes(grade)) { problems.push(`Row ${n + 2}: unknown grade "${grade}"`); return; }
+            payload.push({
+                first_name: get('first_name'), last_name: get('last_name'), grade_level: grade,
+                date_of_birth: get('date_of_birth') || null, gender: get('gender') || null,
+                guardian_name: get('guardian_name') || null, guardian_phone: get('guardian_phone') || null,
+                guardian2_name: get('guardian2_name') || null, guardian2_phone: get('guardian2_phone') || null,
+                address: get('address') || null, previous_school: get('previous_school') || null
+            });
+        });
+        if (!payload.length) {
+            importMessage.value = 'No valid rows found. ' + problems.slice(0, 3).join('; ');
+            importing.value = false;
+            return;
+        }
+        if (!window.confirm(`Import ${payload.length} student(s)?` + (problems.length ? ` ${problems.length} row(s) will be skipped.` : ''))) {
+            importing.value = false;
+            return;
+        }
+        const res = await api.bulkImportStudents(payload);
+        importMessage.value = `Imported ${res.data.created} student(s) — admission numbers were assigned automatically.` +
+            (problems.length ? ` Skipped: ${problems.slice(0, 5).join('; ')}${problems.length > 5 ? '…' : ''}` : '');
+        loadStudents();
+    } catch (e) {
+        console.error(e);
+        importMessage.value = e.response?.data?.detail || 'Import failed — check the file format.';
+    }
+    importing.value = false;
+};
 const students = ref([]);
 const courses = ref([]);
 const blankStudent = () => ({
@@ -228,8 +317,17 @@ onMounted(() => {
   <div class="p-8 max-w-7xl mx-auto relative">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold text-navy">Students Management</h1>
-        <button @click="exportStudents" :disabled="students.length === 0" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">Export CSV</button>
+        <div class="flex gap-3" v-if="authStore.canManageStudents">
+            <button @click="downloadTemplate" class="text-navy hover:text-navy-light font-bold underline text-sm">Template</button>
+            <button @click="importInput.click()" :disabled="importing" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">
+                {{ importing ? 'Importing…' : 'Import CSV' }}
+            </button>
+            <input ref="importInput" type="file" accept=".csv,text/csv" class="hidden" @change="importCsvFile" />
+            <button @click="exportStudents" :disabled="students.length === 0" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">Export CSV</button>
+        </div>
+        <button v-else @click="exportStudents" :disabled="students.length === 0" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">Export CSV</button>
     </div>
+    <p v-if="importMessage" class="mb-4 text-sm font-medium" :class="importMessage.startsWith('Imported') ? 'text-green-600' : 'text-red-accent'">{{ importMessage }}</p>
 
     <!-- Registration Form -->
     <div class="mb-8 p-6 bg-white rounded-xl shadow-sm border border-gray-200">

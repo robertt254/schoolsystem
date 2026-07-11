@@ -118,6 +118,9 @@ class FeeBase(BaseModel):
 
 class FeeCreate(FeeBase):
     current_term: Optional[str] = None  # school's active term — used for future-term validation
+    # Backlog entry from paper records: the real date the payment was made.
+    # Omit for live payments (server stamps "now").
+    payment_date: Optional[datetime] = None
 
 
 class BulkPaymentItem(BaseModel):
@@ -125,6 +128,7 @@ class BulkPaymentItem(BaseModel):
     amount: float = Field(..., gt=0, description="Payment amount must be positive")
     payment_type: PaymentType = PaymentType.tuition
     term: Term
+    payment_date: Optional[datetime] = None  # backlog entry from paper records
 
 
 class FeeAllocationItem(BaseModel):

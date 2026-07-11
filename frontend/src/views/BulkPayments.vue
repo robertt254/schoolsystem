@@ -13,6 +13,7 @@ const paymentTypes = ['Tuition', 'Uniforms', 'Transport', 'Exam Fees'];
 const selectedGrade = ref('Grade 1');
 const selectedTerm = ref('Term 1');
 const paymentType = ref('Tuition');
+const paymentDate = ref('');   // blank = today; set when entering backlog from paper records
 const rows = ref([]);          // [{student_id, name, admission_number, amount}]
 const message = ref('');
 const saving = ref(false);
@@ -44,7 +45,8 @@ const save = async () => {
             student_id: r.student_id,
             amount: parseFloat(r.amount),
             payment_type: paymentType.value,
-            term: selectedTerm.value
+            term: selectedTerm.value,
+            ...(paymentDate.value ? { payment_date: paymentDate.value } : {})
         })));
         message.value = `Recorded ${res.data.created} payment(s) — receipts were generated for each.`;
         loadStudents();
@@ -66,7 +68,7 @@ onMounted(loadStudents);
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Record Payments for a Whole Class</h2>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 items-end mb-4">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 items-end mb-4">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Grade</label>
                 <select v-model="selectedGrade" @change="loadStudents" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
@@ -85,12 +87,18 @@ onMounted(loadStudents);
                     <option v-for="t in paymentTypes" :key="t">{{ t }}</option>
                 </select>
             </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Payment Date (blank = today)</label>
+                <input v-model="paymentDate" type="date" class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+            </div>
             <button @click="save" :disabled="saving || entered.length === 0" class="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50">
                 {{ saving ? 'Saving…' : `Record ${entered.length} Payment(s)` }}
             </button>
         </div>
         <p class="text-sm text-gray-600 mb-3">
             Enter amounts only for students who paid — blank rows are skipped.
+            Each amount clears the student's <span class="font-semibold">oldest arrears first</span>,
+            then the selected term; any excess prepays the following terms.
             Total entered: <span class="font-bold text-navy">{{ money(totalEntered) }}</span>
         </p>
         <p v-if="message" class="text-sm font-medium mb-3" :class="message.startsWith('Recorded') ? 'text-green-600' : 'text-red-accent'">{{ message }}</p>

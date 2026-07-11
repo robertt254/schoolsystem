@@ -338,6 +338,9 @@ def record_payment(
 
     data = fee.model_dump(exclude={"current_term"})
     data["term"] = primary_term
+    # Backdated only when explicitly provided; otherwise the DB stamps "now"
+    if not data.get("payment_date"):
+        data.pop("payment_date", None)
     receipt = _generate_receipt_number(db)
     new_fee = models.FeePayment(
         **data,
@@ -909,29 +912,48 @@ def record_bulk_payments(
         raise HTTPException(status_code=400, detail="Bulk limit is 500 payments per request")
 
     student_ids = [p.student_id for p in payments]
-    valid_students = db.query(models.Student.id).filter(
-        models.Student.id.in_(student_ids),
-        models.Student.is_deleted == False
-    ).all()
-    valid_student_ids = {s[0] for s in valid_students}
+    students_by_id = {
+        s.id: s
+        for s in db.query(models.Student).filter(
+            models.Student.id.in_(student_ids),
+            models.Student.is_deleted == False,
+        ).all()
+    }
 
     created = []
     for p in payments:
-        if p.student_id not in valid_student_ids:
+        student = students_by_id.get(p.student_id)
+        if not student:
             continue
+        current_term = str(getattr(p.term, "value", p.term))
+        if _term_index(current_term) < 0:
+            continue
+
+        # Same waterfall as single payments: clear the oldest arrears first,
+        # then the selected (current) term; any excess is a prepayment that
+        # offsets the following terms' balances. Autoflush makes earlier rows
+        # in this batch visible, so the same student can appear twice.
+        allocation, _total_before, _advance = _compute_allocation(
+            db, student, float(p.amount), current_term
+        )
+        primary_term = allocation[0]["term"]
+
         receipt = _generate_receipt_number(db)
         new_fee = models.FeePayment(
             student_id=p.student_id,
             amount=p.amount,
             payment_type=p.payment_type,
-            term=p.term,
+            term=primary_term,
             recorded_by=current_user.name,
             receipt_number=receipt,
+            allocation=json.dumps(allocation),
+            **({"payment_date": p.payment_date} if p.payment_date else {}),
         )
         db.add(new_fee)
         db.flush()
         log_action(db, current_user.id, "CREATE", "fee", new_fee.id,
-                   {"receipt": receipt, "amount": str(p.amount), "student_id": p.student_id})
+                   {"receipt": receipt, "amount": str(p.amount), "student_id": p.student_id,
+                    "allocation": allocation})
         created.append(new_fee.id)
 
     db.commit()
