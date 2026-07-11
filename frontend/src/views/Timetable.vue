@@ -4,16 +4,17 @@ import api from '../api';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
-const grades = [
-    "Play Group", "PP1", "PP2",
-    "Grade 1", "Grade 2", "Grade 3",
-    "Grade 4", "Grade 5", "Grade 6"
+// Timetables are shared per level group, not per grade
+const groups = [
+    { value: 'Pre-Primary', label: 'Pre-Primary (Play Group, PP1, PP2)' },
+    { value: 'Lower Primary', label: 'Lower Primary (Grade 1, 2, 3)' },
+    { value: 'Upper Primary', label: 'Upper Primary (Grade 4, 5, 6)' }
 ];
 const terms = ["Term 1", "Term 2", "Term 3"];
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const periods = [1, 2, 3, 4, 5, 6, 7, 8];
+const periods = Array.from({ length: 12 }, (_, i) => i + 1);
 
-const selectedGrade = ref('Grade 1');
+const selectedGrade = ref('Lower Primary');
 const selectedTerm = ref('Term 1');
 const grid = ref({});
 const isModalOpen = ref(false);
@@ -78,7 +79,7 @@ onMounted(load);
         <h1 class="text-3xl font-bold text-navy">Timetable</h1>
         <div class="flex gap-4">
             <select v-model="selectedGrade" @change="load" class="border border-gray-300 p-2 rounded-md bg-white focus:ring-navy focus:border-navy">
-                <option v-for="g in grades" :key="g" :value="g">{{ g }}</option>
+                <option v-for="g in groups" :key="g.value" :value="g.value">{{ g.label }}</option>
             </select>
             <select v-model="selectedTerm" @change="load" class="border border-gray-300 p-2 rounded-md bg-white focus:ring-navy focus:border-navy">
                 <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>

@@ -193,7 +193,10 @@ onMounted(() => {
     <!-- Promotion -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div class="flex justify-between items-center mb-4 border-b pb-2">
-            <h2 class="text-xl font-bold text-navy">Student Promotion</h2>
+            <div>
+                <h2 class="text-xl font-bold text-navy">Student Promotion</h2>
+                <p class="text-xs text-gray-400">Only allowed at the end of the academic year — after Term 3 ends, before the new Term 1 begins.</p>
+            </div>
             <button @click="runYearTransition" class="bg-red-accent text-white px-4 py-2 rounded-md hover:bg-red-hover">Run Year Transition (all grades)</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-4">

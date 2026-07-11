@@ -467,6 +467,28 @@ GRADE_PROGRESSION = {
 }
 
 
+def promotion_window_open(db: Session, today=None) -> bool:
+    """Promotions happen only at the END of the academic year: after Term 3
+    closes and before the next year's Term 1 begins (the long holiday)."""
+    from events import _term_ranges
+    today = today or datetime.now().date()
+    ranges, _ = _term_ranges(db, today.year)
+    term1 = ranges.get("Term 1")
+    term3 = ranges.get("Term 3")
+    after_year_end = bool(term3) and today > term3[1]
+    before_year_start = bool(term1) and today < term1[0]
+    return after_year_end or before_year_start
+
+
+def _require_promotion_window(db: Session):
+    if not promotion_window_open(db):
+        raise HTTPException(
+            status_code=400,
+            detail="Promotions are only allowed at the end of the academic year "
+                   "(after Term 3 ends and before the new year's Term 1 begins).",
+        )
+
+
 @router.post("/promote")
 def promote_students(
     payload: schemas.PromotionRequest,
@@ -475,6 +497,7 @@ def promote_students(
 ):
     if current_user.role not in {"admin", "principal"}:
         raise HTTPException(status_code=403, detail="Only admin or principal can promote students")
+    _require_promotion_window(db)
 
     # Single query for the whole batch — avoids an N+1 per student id
     students = db.query(models.Student).filter(
@@ -513,6 +536,7 @@ def year_transition(
     """Promote ALL active students to next grade; Grade 6 → Graduated."""
     if current_user.role not in {"admin", "principal"}:
         raise HTTPException(status_code=403, detail="Only admin or principal can run year transition")
+    _require_promotion_window(db)
 
     students = db.query(models.Student).filter(
         models.Student.is_deleted == False,

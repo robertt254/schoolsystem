@@ -401,9 +401,11 @@ class ExpenseResponse(ExpenseCreate):
 
 
 class TimetableCreate(BaseModel):
-    grade_level: GradeLevel
+    # Timetables are shared by level group, not per grade: Play Group/PP1/PP2
+    # follow one timetable, Grades 1-3 another, Grades 4-6 another.
+    grade_level: str = Field(..., pattern=r"^(Pre-Primary|Lower Primary|Upper Primary)$")
     day_of_week: str = Field(..., pattern=r"^(Monday|Tuesday|Wednesday|Thursday|Friday)$")
-    period: int = Field(..., ge=1, le=10)
+    period: int = Field(..., ge=1, le=12)
     subject: str = Field(..., min_length=1, max_length=100)
     teacher_name: Optional[str] = Field(None, max_length=100)
     start_time: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")

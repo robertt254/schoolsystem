@@ -329,8 +329,9 @@ onMounted(() => {
     </div>
     <p v-if="importMessage" class="mb-4 text-sm font-medium" :class="importMessage.startsWith('Imported') ? 'text-green-600' : 'text-red-accent'">{{ importMessage }}</p>
 
-    <!-- Registration Form -->
-    <div class="mb-8 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+    <!-- Registration Form — only roles allowed to admit students (admin,
+         principal, secretary); senior teachers view and evaluate only -->
+    <div v-if="authStore.canManageStudents" class="mb-8 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
       <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Register New Student — Bona School Kenya</h2>
       <form @submit.prevent="addStudent" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <div>
