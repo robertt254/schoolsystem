@@ -13,7 +13,16 @@ export const useAuthStore = defineStore('auth', {
     isFinance: (state) => state.user?.role === 'accountant',
     isSecretary: (state) => state.user?.role === 'secretary',
     // Composite permissions mirroring backend role checks
+    // Fee operations (record payments, invoices, statements, defaulters)
+    canFees: (state) => ['admin', 'principal', 'accountant', 'secretary'].includes(state.user?.role),
+    // School finances (expenses, budgets, petty cash, accountability)
     canFinance: (state) => ['admin', 'principal', 'accountant'].includes(state.user?.role),
+    // Payroll is tighter still
+    canPayroll: (state) => ['admin', 'accountant'].includes(state.user?.role),
+    // CBC scores, exam entry, grade sheets
+    canAcademics: (state) => ['admin', 'principal', 'senior_teacher', 'teacher'].includes(state.user?.role),
+    canMarkAttendance: (state) => ['admin', 'principal', 'secretary', 'senior_teacher', 'teacher'].includes(state.user?.role),
+    canDiscipline: (state) => ['admin', 'principal', 'secretary', 'senior_teacher', 'teacher'].includes(state.user?.role),
     canComms: (state) => ['admin', 'principal', 'secretary'].includes(state.user?.role),
     canManageStudents: (state) => ['admin', 'principal', 'secretary'].includes(state.user?.role),
     isSystemAdmin: (state) => state.user?.role === 'admin',

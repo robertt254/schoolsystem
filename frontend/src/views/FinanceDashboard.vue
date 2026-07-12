@@ -8,6 +8,7 @@ import { exportCsv } from '../utils/csvExport';
 // Per-term accountability table (fees vs expenses vs payroll vs petty cash)
 const accountability = ref(null);
 const loadAccountability = async () => {
+    if (!authStore.canFinance) return;   // secretary handles fees only
     try {
         const res = await api.getTermAccountability(academicYear.value);
         accountability.value = res.data;

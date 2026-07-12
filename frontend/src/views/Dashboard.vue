@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import api from '../api';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
 
 const stats = ref({
   total_students: 0,
@@ -73,7 +76,7 @@ onMounted(load);
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Net Revenue</h3>
         <p class="text-3xl font-bold" :class="stats.total_revenue >= 0 ? 'text-green-600' : 'text-red-accent'">{{ money(stats.total_revenue) }}</p>
-        <router-link to="/finance" class="text-sm text-blue-500 hover:underline">Finance</router-link>
+        <router-link v-if="authStore.canFees" to="/finance" class="text-sm text-blue-500 hover:underline">Finance</router-link>
       </div>
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Attendance Today</h3>
@@ -100,7 +103,7 @@ onMounted(load);
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 relative overflow-hidden">
         <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Fee Defaulters</h3>
         <p class="text-3xl font-bold text-red-accent">{{ stats.defaulters_count }}</p>
-        <router-link to="/defaulters" class="text-sm text-blue-500 hover:underline">View Defaulters</router-link>
+        <router-link v-if="authStore.canFees" to="/defaulters" class="text-sm text-blue-500 hover:underline">View Defaulters</router-link>
         <div class="absolute right-0 bottom-0 h-1 bg-red-accent w-full"></div>
       </div>
     </div>

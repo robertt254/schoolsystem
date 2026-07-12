@@ -120,8 +120,8 @@ onMounted(load);
         </div>
     </div>
 
-    <!-- Add event -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <!-- Add event — admin/principal/secretary -->
+    <div v-if="authStore.canComms" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Add Event</h2>
         <form @submit.prevent="addEvent" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
             <div>
@@ -175,7 +175,7 @@ onMounted(load);
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ ev.created_by }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button v-if="authStore.canComms" @click="removeEvent(ev)" class="text-red-accent hover:text-red-hover font-bold underline">Delete</button>
+                        <button v-if="authStore.isAdmin" @click="removeEvent(ev)" class="text-red-accent hover:text-red-hover font-bold underline">Delete</button>
                     </td>
                 </tr>
                 <tr v-if="events.length === 0">

@@ -42,15 +42,17 @@ const routes = [
   { path: '/timetable', component: Timetable },
   { path: '/discipline', component: Discipline },
 
-  // Finance
-  { path: '/finance', component: FinanceDashboard, meta: { requiresFinance: true } },
-  { path: '/defaulters', component: Defaulters, meta: { requiresFinance: true } },
-  { path: '/fee-structure', component: FeeStructure, meta: { requiresFinance: true } },
-  { path: '/payroll', component: Payroll, meta: { requiresFinance: true } },
+  // Fee operations — includes the secretary (mirrors backend FINANCE_ROLES)
+  { path: '/finance', component: FinanceDashboard, meta: { requiresFees: true } },
+  { path: '/defaulters', component: Defaulters, meta: { requiresFees: true } },
+  { path: '/fee-structure', component: FeeStructure, meta: { requiresFees: true } },
+  { path: '/fee-statement', component: FeeStatement, meta: { requiresFees: true } },
+  { path: '/bulk-payments', component: BulkPayments, meta: { requiresFees: true } },
+  // School finances — admin/principal/accountant only
   { path: '/expenses', component: Expenses, meta: { requiresFinance: true } },
   { path: '/budgets', component: Budgets, meta: { requiresFinance: true } },
-  { path: '/fee-statement', component: FeeStatement, meta: { requiresFinance: true } },
-  { path: '/bulk-payments', component: BulkPayments, meta: { requiresFinance: true } },
+  // Payroll — admin/accountant only (matches the backend)
+  { path: '/payroll', component: Payroll, meta: { requiresPayroll: true } },
   { path: '/reports', component: Reports, meta: { requiresAdmin: true } },
 
   // People & office
@@ -83,8 +85,12 @@ router.beforeEach(async (to, from, next) => {
     next('/login');
   } else if (to.meta.requiresAdmin && !authStore.isAdmin && !authStore.isFinance) {
     next('/'); // Or a 403 page
+  } else if (to.meta.requiresFees && !authStore.canFees) {
+    next('/');
   } else if (to.meta.requiresFinance && !authStore.canFinance) {
     next('/'); // Or a 403 page
+  } else if (to.meta.requiresPayroll && !authStore.canPayroll) {
+    next('/');
   } else if (to.meta.requiresComms && !authStore.canComms) {
     next('/');
   } else if (to.path === '/login' && isAuthenticated) {

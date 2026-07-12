@@ -128,8 +128,8 @@ onMounted(() => {
     <p v-if="message" class="text-sm font-medium text-red-accent">{{ message }}</p>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- Add book -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <!-- Add book — admin/principal/secretary manage the catalogue -->
+        <div v-if="authStore.canComms" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Add Book</h2>
             <form @submit.prevent="addBook" class="space-y-4">
                 <div class="grid grid-cols-2 gap-4">

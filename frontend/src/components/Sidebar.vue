@@ -34,16 +34,18 @@ const groups = computed(() => [
         ]
     },
     {
-        key: 'finance', label: 'Finance', show: authStore.canFinance,
+        key: 'finance', label: 'Finance', show: authStore.canFees,
         links: [
             { to: '/finance', label: 'Finance Dashboard' },
             { to: '/bulk-payments', label: 'Bulk Payments' },
             { to: '/defaulters', label: 'Defaulters' },
             { to: '/fee-statement', label: 'Fee Statement' },
             { to: '/fee-structure', label: 'Fee Structure' },
-            { to: '/payroll', label: 'Payroll' },
-            { to: '/expenses', label: 'Expenses' },
-            { to: '/budgets', label: 'Budgets' },
+            ...(authStore.canPayroll ? [{ to: '/payroll', label: 'Payroll' }] : []),
+            ...(authStore.canFinance ? [
+                { to: '/expenses', label: 'Expenses' },
+                { to: '/budgets', label: 'Budgets' },
+            ] : []),
         ]
     },
     {

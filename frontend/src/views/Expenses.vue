@@ -93,8 +93,8 @@ onMounted(load);
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- Record expense -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <!-- Record expense — backend allows admin/principal only -->
+        <div v-if="authStore.isAdmin" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Record Expense</h2>
             <form @submit.prevent="addExpense" class="space-y-4">
                 <div class="grid grid-cols-2 gap-4">

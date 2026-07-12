@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import api from '../api';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
 
 const grades = [
     "Play Group", "PP1", "PP2",
@@ -65,8 +68,8 @@ onMounted(() => {
         <span class="text-sm text-gray-500">{{ new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</span>
     </div>
 
-    <!-- Marking panel -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <!-- Marking panel — accountant can view summaries but not mark -->
+    <div v-if="authStore.canMarkAttendance" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Mark Today's Register</h2>
         <div class="flex flex-col md:flex-row gap-4 items-end mb-4">
             <div class="md:w-56">

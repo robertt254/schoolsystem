@@ -4,6 +4,9 @@ import { useRoute } from 'vue-router';
 import api from '../api';
 import SchoolBadge from '../components/SchoolBadge.vue';
 import { gradeLabel } from '../utils/grading';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
 
 const route = useRoute();
 const students = ref([]);
@@ -122,8 +125,9 @@ onMounted(async () => {
         </div>
     </div>
 
-    <!-- Whole-class printing -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <!-- Whole-class printing — uses the grade score sheet, which the backend
+         restricts to admin/principal/teachers -->
+    <div v-if="authStore.canAcademics" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Print Whole Class</h2>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>

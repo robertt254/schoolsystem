@@ -425,7 +425,7 @@ onMounted(() => {
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ student.guardian_contact }}</td>
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <router-link :to="`/students/${student.id}`" class="text-navy hover:text-navy-light mx-2 font-bold underline">Profile</router-link>
-                <button @click="openAssessmentModal(student)" class="text-navy hover:text-navy-light mx-2 font-bold underline">Evaluate (CBC)</button>
+                <button v-if="authStore.canAcademics" @click="openAssessmentModal(student)" class="text-navy hover:text-navy-light mx-2 font-bold underline">Evaluate (CBC)</button>
                 <button v-if="authStore.canManageStudents" @click="openEdit(student)" class="text-navy hover:text-navy-light mx-2 font-bold underline">Edit</button>
                 <button v-if="authStore.isAdmin" @click="archiveStudent(student)" class="text-red-accent hover:text-red-hover mx-2 font-bold underline">Archive</button>
             </td>

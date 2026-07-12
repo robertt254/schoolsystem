@@ -115,8 +115,8 @@ onMounted(() => {
         </div>
     </div>
 
-    <!-- Registration Form -->
-    <div class="mb-8 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+    <!-- Registration Form — subject management is admin/principal only -->
+    <div v-if="authStore.isAdmin" class="mb-8 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
       <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Add New Course</h2>
       <form @submit.prevent="addCourse" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <div>

@@ -2,6 +2,9 @@
 import { ref, onMounted } from 'vue';
 import api from '../api';
 import { gradeLabel } from '../utils/grading';
+import { useAuthStore } from '../stores/auth';
+
+const authStore = useAuthStore();
 
 const grades = [
     "Play Group", "PP1", "PP2",
@@ -121,8 +124,8 @@ onMounted(async () => {
         <h1 class="text-3xl font-bold text-navy">Exams</h1>
     </div>
 
-    <!-- Marks entry -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <!-- Marks entry — roles that may record marks (backend: admin/principal/teachers) -->
+    <div v-if="authStore.canAcademics" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Enter Exam Marks</h2>
         <div class="grid grid-cols-2 md:grid-cols-6 gap-4 items-end mb-4">
             <div>

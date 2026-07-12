@@ -72,8 +72,8 @@ onMounted(() => {
         </select>
     </div>
 
-    <!-- Record incident -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+    <!-- Record incident — accountant has read-only access -->
+    <div v-if="authStore.canDiscipline" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Record Incident</h2>
         <form @submit.prevent="addRecord" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
@@ -150,7 +150,7 @@ onMounted(() => {
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button v-if="r.status === 'Open'" @click="resolveRecord(r)" class="text-navy hover:text-navy-light font-bold underline">Resolve</button>
+                        <button v-if="r.status === 'Open' && authStore.canDiscipline" @click="resolveRecord(r)" class="text-navy hover:text-navy-light font-bold underline">Resolve</button>
                     </td>
                 </tr>
                 <tr v-if="records.length === 0">
