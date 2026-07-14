@@ -115,6 +115,9 @@ async def startup():
         # timetable & leave tables created via create_all; extra safety cols below
         "ALTER TABLE timetable       ADD COLUMN IF NOT EXISTS created_by   VARCHAR(100) NOT NULL DEFAULT 'system'",
         "ALTER TABLE leave_requests  ADD COLUMN IF NOT EXISTS reviewed_at  TIMESTAMPTZ",
+        # mid-year joiners: fees owed only from the admission term onwards
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS admission_term VARCHAR(10)",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS admission_year INTEGER",
         # extended student fields
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS date_of_birth   DATE",
         "ALTER TABLE students ADD COLUMN IF NOT EXISTS gender          VARCHAR(10)",

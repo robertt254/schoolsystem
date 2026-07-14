@@ -45,6 +45,10 @@ class Student(Base):
     admission_number = Column(String(20), unique=True, index=True, nullable=False)
     grade_level = Column(String(20), nullable=False, index=True)
     status = Column(String(20), nullable=False, default="Active")
+    # Mid-year joiners owe fees only from their admission term onwards.
+    # NULL admission_year means "enrolled before this year" → owes all terms.
+    admission_term = Column(String(10), nullable=True)
+    admission_year = Column(Integer, nullable=True)
     date_of_birth = Column(Date, nullable=True)
     gender = Column(String(10), nullable=True)
     guardian_name = Column(String(100), nullable=True)

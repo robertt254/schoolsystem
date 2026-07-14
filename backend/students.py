@@ -9,6 +9,7 @@ import schemas
 import auth
 from audit import log_action
 from constants import CBC_TERMLY_FEES, CBC_GRADES
+from fees import _owes_term
 
 _CBC_FEES = CBC_TERMLY_FEES   # local alias
 
@@ -102,10 +103,13 @@ def get_class_roster(
             models.FeeStructure.academic_year == year,
         ).all()
     }
-    grade_annual_expected = sum(
-        fee_structs.get(t, _CBC_FEES.get(grade, 0.0))
-        for t in ["Term 1", "Term 2", "Term 3"]
-    )
+    def annual_expected_for(s) -> float:
+        """Mid-year joiners are only billed from their admission term onwards."""
+        return sum(
+            fee_structs.get(t, _CBC_FEES.get(grade, 0.0))
+            for t in ["Term 1", "Term 2", "Term 3"]
+            if _owes_term(s, t)
+        )
 
     # Batch: total paid per student (all terms)
     paid_rows = db.query(
@@ -128,7 +132,7 @@ def get_class_roster(
             "date_of_birth": s.date_of_birth.isoformat() if s.date_of_birth else None,
             "status": s.status,
             "attendance_pct": att_pct,
-            "fee_balance": round(grade_annual_expected - total_paid, 2),
+            "fee_balance": round(annual_expected_for(s) - total_paid, 2),
         })
     return roster
 
@@ -171,6 +175,11 @@ def create_student(
 
     data = student.model_dump()
     data["admission_number"] = admission_number
+    # Default: owes the full current year unless a joining term was given
+    if not data.get("admission_year"):
+        data["admission_year"] = datetime.now().year
+    if not data.get("admission_term"):
+        data["admission_term"] = "Term 1"
     new_student = models.Student(**data)
     db.add(new_student)
     db.flush()
@@ -206,6 +215,10 @@ def bulk_import_students(
 
         data = entry.model_dump()
         data["admission_number"] = admission_number
+        if not data.get("admission_year"):
+            data["admission_year"] = datetime.now().year
+        if not data.get("admission_term"):
+            data["admission_term"] = "Term 1"
         new_student = models.Student(**data)
         db.add(new_student)
         db.flush()
@@ -307,6 +320,8 @@ def get_student_profile(
 
     found_terms = {fs.term: float(fs.amount) for fs in fee_structures}
     for term in terms:
+        if not _owes_term(student, term):
+            continue   # joined mid-year — earlier terms are not owed
         total_expected += found_terms.get(term, _CBC_FEES.get(student.grade_level, 0.0))
 
     total_paid = float(

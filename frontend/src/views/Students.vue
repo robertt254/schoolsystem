@@ -13,7 +13,7 @@ const exportStudents = () => {
 };
 
 // ── CSV import — migrate the register from paper/spreadsheets ───────────────
-const IMPORT_COLUMNS = ['first_name', 'last_name', 'grade_level', 'date_of_birth', 'gender',
+const IMPORT_COLUMNS = ['first_name', 'last_name', 'grade_level', 'admission_term', 'date_of_birth', 'gender',
     'guardian_name', 'guardian_phone', 'guardian2_name', 'guardian2_phone', 'address', 'previous_school'];
 const importInput = ref(null);
 const importMessage = ref('');
@@ -22,7 +22,8 @@ const importing = ref(false);
 const downloadTemplate = () => {
     exportCsv('student_import_template.csv',
         IMPORT_COLUMNS.map(c => [c, c]),
-        [{ first_name: 'Jane', last_name: 'Wanjiku', grade_level: 'Grade 1', date_of_birth: '2018-03-14',
+        [{ first_name: 'Jane', last_name: 'Wanjiku', grade_level: 'Grade 1', admission_term: 'Term 1',
+           date_of_birth: '2018-03-14',
            gender: 'Female', guardian_name: 'Alice Wanjiku', guardian_phone: '+254700000001',
            guardian2_name: '', guardian2_phone: '', address: 'Kisumu', previous_school: '' }]);
 };
@@ -71,10 +72,15 @@ const importCsvFile = async (event) => {
         rows.forEach((r, n) => {
             const get = (c) => idx[c] === -1 ? '' : (r[idx[c]] || '').trim();
             const grade = get('grade_level');
+            const admTerm = get('admission_term');
             if (!get('first_name') || !get('last_name')) { problems.push(`Row ${n + 2}: missing name`); return; }
             if (!grades.includes(grade)) { problems.push(`Row ${n + 2}: unknown grade "${grade}"`); return; }
+            if (admTerm && !terms.includes(admTerm)) { problems.push(`Row ${n + 2}: unknown term "${admTerm}"`); return; }
             payload.push({
                 first_name: get('first_name'), last_name: get('last_name'), grade_level: grade,
+                // Blank = Term 1 (owes the full year); "Term 2"/"Term 3" for mid-year joiners
+                admission_term: admTerm || null,
+                admission_year: admTerm ? currentYear.value : null,
                 date_of_birth: get('date_of_birth') || null, gender: get('gender') || null,
                 guardian_name: get('guardian_name') || null, guardian_phone: get('guardian_phone') || null,
                 guardian2_name: get('guardian2_name') || null, guardian2_phone: get('guardian2_phone') || null,
@@ -102,12 +108,16 @@ const importCsvFile = async (event) => {
 };
 const students = ref([]);
 const courses = ref([]);
+const currentTerm = ref('Term 1');
+const currentYear = ref(new Date().getFullYear());
 const blankStudent = () => ({
     first_name: '', last_name: '', grade: 'Play Group',
+    admission_term: currentTerm.value,
     date_of_birth: '', gender: '', guardian_name: '', guardian_contact: '',
     guardian2_name: '', guardian2_phone: '', address: '', previous_school: ''
 });
 const newStudent = ref(blankStudent());
+const terms = ['Term 1', 'Term 2', 'Term 3'];
 const searchTerm = ref('');
 const filterGrade = ref('');
 const registerMessage = ref('');
@@ -193,6 +203,8 @@ const openEdit = async (student) => {
             id: s.id,
             first_name: s.first_name, last_name: s.last_name,
             grade_level: s.grade_level, status: s.status,
+            // '' = enrolled before this year (owes every term)
+            admission_term: (s.admission_year === currentYear.value && s.admission_term) ? s.admission_term : '',
             date_of_birth: s.date_of_birth || '', gender: s.gender || '',
             guardian_name: s.guardian_name || '', guardian_phone: s.guardian_phone || '',
             guardian2_name: s.guardian2_name || '', guardian2_phone: s.guardian2_phone || '',
@@ -208,6 +220,8 @@ const saveEdit = async () => {
         await api.updateStudent(f.id, {
             first_name: f.first_name, last_name: f.last_name,
             grade_level: f.grade_level, status: f.status,
+            admission_term: f.admission_term || null,
+            admission_year: f.admission_term ? currentYear.value : null,
             date_of_birth: f.date_of_birth || null, gender: f.gender || null,
             guardian_name: f.guardian_name || null, guardian_phone: f.guardian_phone || null,
             guardian2_name: f.guardian2_name || null, guardian2_phone: f.guardian2_phone || null,
@@ -237,6 +251,9 @@ const addStudent = async () => {
           last_name: f.last_name,
           // Admission number is system-generated (BNS-XXXX) and immutable
           grade_level: f.grade,
+          // Fees are owed only from the joining term onwards
+          admission_term: f.admission_term,
+          admission_year: currentYear.value,
           date_of_birth: f.date_of_birth || null,
           gender: f.gender || null,
           guardian_name: f.guardian_name || null,
@@ -307,9 +324,16 @@ const submitAssessment = async () => {
     }
 };
 
-onMounted(() => {
+onMounted(async () => {
   loadStudents();
   loadCourses();
+  // New joiners default to the school's current term for fee purposes
+  try {
+      const res = await api.getCurrentTerm();
+      currentTerm.value = res.data.term;
+      currentYear.value = res.data.academic_year;
+      newStudent.value.admission_term = res.data.term;
+  } catch (e) { console.error(e); }
 });
 </script>
 
@@ -346,6 +370,12 @@ onMounted(() => {
             <label class="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
             <select v-model="newStudent.grade" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                 <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Joined In (fees start this term)</label>
+            <select v-model="newStudent.admission_term" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                <option v-for="t in terms" :key="t" :value="t">{{ t }} {{ t === currentTerm ? '(current)' : '' }}</option>
             </select>
         </div>
         <div>
@@ -539,6 +569,13 @@ onMounted(() => {
                             <option>Active</option>
                             <option>Graduated</option>
                             <option>Transferred</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Joined In (fees start this term)</label>
+                        <select v-model="editForm.admission_term" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
+                            <option value="">Before this year (owes all terms)</option>
+                            <option v-for="t in terms" :key="t" :value="t">{{ t }} {{ currentYear }}</option>
                         </select>
                     </div>
                     <div>

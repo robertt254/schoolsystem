@@ -77,6 +77,9 @@ class StudentCreate(BaseModel):
     admission_number: Optional[str] = Field(None, max_length=20)
     grade_level: GradeLevel
     status: StudentStatus = StudentStatus.active
+    # Mid-year joiners owe fees only from this term onwards
+    admission_term: Optional[str] = Field(None, pattern=r"^Term [1-3]$")
+    admission_year: Optional[int] = Field(None, ge=2020, le=2100)
     date_of_birth: Optional[date] = None
     gender: Optional[str] = Field(None, max_length=10)
     guardian_name: Optional[str] = Field(None, max_length=100)
@@ -89,6 +92,8 @@ class StudentCreate(BaseModel):
 
 class StudentResponse(StudentBase):
     id: int
+    admission_term: Optional[str] = None
+    admission_year: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -99,6 +104,8 @@ class StudentUpdate(BaseModel):
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     grade_level: Optional[GradeLevel] = None
     status: Optional[StudentStatus] = None
+    admission_term: Optional[str] = Field(None, pattern=r"^Term [1-3]$")
+    admission_year: Optional[int] = Field(None, ge=2020, le=2100)
     date_of_birth: Optional[date] = None
     gender: Optional[str] = Field(None, max_length=10)
     guardian_name: Optional[str] = Field(None, max_length=100)

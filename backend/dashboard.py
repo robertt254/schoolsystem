@@ -5,7 +5,7 @@ from sqlalchemy import func, cast, Date
 from datetime import date
 from database import get_db
 import models, auth
-from fees import _expected_fee_map, _expected_from_map, _paid_map, TERM_ORDER, TERM_BY_NUM
+from fees import _expected_fee_map, _expected_from_map_for_student, _paid_map, TERM_ORDER, TERM_BY_NUM
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
@@ -63,10 +63,10 @@ def get_dashboard_stats(
         term_collected = 0.0
         defaulters_count = 0
         for s in active_students:
-            expected_s = _expected_from_map(fee_map, s.grade_level, term)
+            expected_s = _expected_from_map_for_student(fee_map, s, term)
             term_expected += expected_s
             direct_paid = paid_map.get((s.id, term), 0.0)
-            cum_expected = sum(_expected_from_map(fee_map, s.grade_level, t) for t in prior_terms)
+            cum_expected = sum(_expected_from_map_for_student(fee_map, s, t) for t in prior_terms)
             cum_paid = sum(paid_map.get((s.id, t), 0.0) for t in prior_terms)
             rollover = max(0.0, round(cum_paid - cum_expected, 2))
             if expected_s > 0:

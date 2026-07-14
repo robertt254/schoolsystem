@@ -60,15 +60,35 @@ def _get_expected_fee(db: Session, grade_level: str, term: str) -> float:
     return CBC_TERMLY_FEES_FALLBACK.get(grade_level, 0.0)
 
 
-def _get_rollover_credit(db: Session, student_id: int, grade_level: str, up_to_term_num: int) -> float:
+def _owes_term(student, term: str) -> bool:
+    """Mid-year joiners owe nothing for terms before their admission term.
+    Students without an admission year (enrolled before this year, or legacy
+    records) owe every term — the pre-existing behaviour."""
+    year = datetime.now().year
+    admission_year = getattr(student, "admission_year", None)
+    if admission_year is None or admission_year < year:
+        return True
+    if admission_year > year:
+        return False
+    admission_term = getattr(student, "admission_term", None) or "Term 1"
+    return TERM_ORDER.get(term, 1) >= TERM_ORDER.get(admission_term, 1)
+
+
+def _expected_fee_for_student(db: Session, student, term: str) -> float:
+    if not _owes_term(student, term):
+        return 0.0
+    return _get_expected_fee(db, student.grade_level, term)
+
+
+def _get_rollover_credit(db: Session, student, up_to_term_num: int) -> float:
     """Return the cumulative overpayment from all terms before up_to_term_num (within same year)."""
     cumulative_expected = 0.0
     cumulative_paid = 0.0
     for num in range(1, up_to_term_num):
         t = TERM_BY_NUM[num]
-        cumulative_expected += _get_expected_fee(db, grade_level, t)
+        cumulative_expected += _expected_fee_for_student(db, student, t)
         paid = db.query(func.sum(models.FeePayment.amount)).filter(
-            models.FeePayment.student_id == student_id,
+            models.FeePayment.student_id == student.id,
             models.FeePayment.term == t,
         ).scalar() or 0.0
         cumulative_paid += float(paid)
@@ -87,8 +107,9 @@ def _get_carry_forward(db: Session, student_id: int, academic_year: str, term: s
 
 def _term_outstanding(db: Session, student, term: str, year_str: str) -> float:
     """Outstanding balance for one term, using the same definition as the
-    student-balance endpoint (expected + carry-forward − paid − prior rollover)."""
-    expected = _get_expected_fee(db, student.grade_level, term)
+    student-balance endpoint (expected + carry-forward − paid − prior rollover).
+    Terms before a mid-year joiner's admission term expect nothing."""
+    expected = _expected_fee_for_student(db, student, term)
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount))
         .filter(
@@ -98,7 +119,7 @@ def _term_outstanding(db: Session, student, term: str, year_str: str) -> float:
         .scalar() or 0.0
     )
     term_num = TERM_ORDER.get(term, 1)
-    rollover = _get_rollover_credit(db, student.id, student.grade_level, term_num)
+    rollover = _get_rollover_credit(db, student, term_num)
     carry = _get_carry_forward(db, student.id, year_str, term)
     return round(max(0.0, expected + carry - total_paid - rollover), 2)
 
@@ -170,6 +191,13 @@ def _expected_from_map(fee_map: dict, grade_level: str, term: str) -> float:
     return fee_map.get((grade_level, term), CBC_TERMLY_FEES_FALLBACK.get(grade_level, 0.0))
 
 
+def _expected_from_map_for_student(fee_map: dict, student, term: str) -> float:
+    """Batched variant of _expected_fee_for_student."""
+    if not _owes_term(student, term):
+        return 0.0
+    return _expected_from_map(fee_map, student.grade_level, term)
+
+
 def _paid_map(db: Session, student_ids: list) -> dict:
     """(student_id, term) → summed payments, in one grouped query."""
     if not student_ids:
@@ -203,11 +231,11 @@ def compute_effective_term_collection(db: Session, students: list, term: str) ->
 
     total = 0.0
     for s in students:
-        expected = _expected_from_map(fee_map, s.grade_level, term)
+        expected = _expected_from_map_for_student(fee_map, s, term)
         if expected <= 0:
             continue
         direct_paid = paid.get((s.id, term), 0.0)
-        cum_expected = sum(_expected_from_map(fee_map, s.grade_level, t) for t in prior_terms)
+        cum_expected = sum(_expected_from_map_for_student(fee_map, s, t) for t in prior_terms)
         cum_paid = sum(paid.get((s.id, t), 0.0) for t in prior_terms)
         rollover = max(0.0, round(cum_paid - cum_expected, 2))
         total += min(direct_paid + rollover, expected)
@@ -241,17 +269,18 @@ def get_smart_term(
     recommended_term = current_term
     outstanding_balance = 0.0
 
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
     for term in allowed_terms:
         paid = float(
             db.query(func.sum(models.FeePayment.amount))
             .filter(models.FeePayment.student_id == student_id, models.FeePayment.term == term)
             .scalar() or 0
         )
-        expected = _get_expected_fee(db, None, term)  # grade resolved below
-        student = db.query(models.Student).filter(models.Student.id == student_id).first()
-        if not student:
-            raise HTTPException(status_code=404, detail="Student not found")
-        expected = _get_expected_fee(db, student.grade_level, term)
+        # Mid-year joiners expect nothing before their admission term
+        expected = _expected_fee_for_student(db, student, term)
         balance = round(expected - paid, 2)
         if balance > 0:
             recommended_term = term
@@ -558,7 +587,7 @@ def get_student_balance(
         raise HTTPException(status_code=404, detail="Student not found")
 
     current_term_num = TERM_ORDER.get(term, 1)
-    expected = _get_expected_fee(db, student.grade_level, term)
+    expected = _expected_fee_for_student(db, student, term)
 
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount)).filter(
@@ -567,7 +596,7 @@ def get_student_balance(
         ).scalar() or 0.0
     )
 
-    rollover_credit = _get_rollover_credit(db, student_id, student.grade_level, current_term_num)
+    rollover_credit = _get_rollover_credit(db, student, current_term_num)
     carry_forward = _get_carry_forward(db, student_id, academic_year, term) if academic_year else 0.0
 
     outstanding = round(max(0.0, expected + carry_forward - total_paid - rollover_credit), 2)
@@ -669,8 +698,10 @@ def get_defaulters(
         ).all()
     }
 
-    def expected_fee(grade: str, t: str) -> float:
-        return fee_structs.get((grade, t), CBC_TERMLY_FEES_FALLBACK.get(grade, 0.0))
+    def expected_fee(s, t: str) -> float:
+        if not _owes_term(s, t):
+            return 0.0
+        return fee_structs.get((s.grade_level, t), CBC_TERMLY_FEES_FALLBACK.get(s.grade_level, 0.0))
 
     # ── 2. Load all payments grouped by (student_id, term) ─────────────────
     pay_rows = db.query(
@@ -700,7 +731,7 @@ def get_defaulters(
 
     defaulters = []
     for s in students:
-        exp = expected_fee(s.grade_level, term)
+        exp = expected_fee(s, term)
         if exp == 0:
             continue
 
@@ -708,7 +739,7 @@ def get_defaulters(
         carry_fwd = cf_map.get((s.id, term), 0.0)
 
         # Rollover: overpayment from all prior terms this year
-        cum_exp = sum(expected_fee(s.grade_level, t) for t in prior_terms)
+        cum_exp = sum(expected_fee(s, t) for t in prior_terms)
         cum_paid = sum(paid_map.get((s.id, t), 0.0) for t in prior_terms)
         rollover = max(0.0, round(cum_paid - cum_exp, 2))
 
