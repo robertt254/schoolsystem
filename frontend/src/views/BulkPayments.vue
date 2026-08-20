@@ -14,13 +14,23 @@ const selectedGrade = ref('Grade 1');
 const selectedTerm = ref('Term 1');
 const paymentType = ref('Tuition');
 const paymentDate = ref('');   // blank = today; set when entering backlog from paper records
-const rows = ref([]);          // [{student_id, name, admission_number, amount}]
+const rows = ref([]);          // [{student_id, name, admission_number, amount, outstanding, loadingBalance}]
 const message = ref('');
 const saving = ref(false);
+const loadingBalances = ref(false);
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
 const entered = computed(() => rows.value.filter(r => r.amount !== '' && r.amount !== null && parseFloat(r.amount) > 0));
 const totalEntered = computed(() => entered.value.reduce((s, r) => s + parseFloat(r.amount), 0));
+
+// What's left owed for the selected term once the entered amount is applied.
+// Informational only — the amount typed is still what gets recorded; the
+// server's waterfall decides how it's actually allocated across terms.
+const remainingAfter = (r) => {
+    if (r.outstanding === null) return null;
+    const paid = parseFloat(r.amount) || 0;
+    return Math.max(0, r.outstanding - paid);
+};
 
 const loadStudents = async () => {
     message.value = '';
@@ -30,9 +40,28 @@ const loadStudents = async () => {
             student_id: s.id,
             name: `${s.first_name} ${s.last_name}`,
             admission_number: s.admission_number,
-            amount: ''
+            amount: '',
+            outstanding: null
         }));
     } catch (e) { console.error(e); }
+    loadBalances();
+};
+
+// Outstanding balance for the selected term, shown as a reference so paper
+// records can be cross-checked before saving. Fetched per student in
+// parallel; one student's failure doesn't block the others.
+const loadBalances = async () => {
+    if (!rows.value.length) return;
+    loadingBalances.value = true;
+    await Promise.all(rows.value.map(async (r) => {
+        try {
+            const res = await api.getStudentFeeBalance(r.student_id, selectedTerm.value);
+            r.outstanding = res.data.outstanding_balance;
+        } catch (e) {
+            r.outstanding = null;
+        }
+    }));
+    loadingBalances.value = false;
 };
 
 const save = async () => {
@@ -77,7 +106,7 @@ onMounted(loadStudents);
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Term</label>
-                <select v-model="selectedTerm" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                <select v-model="selectedTerm" @change="loadBalances" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
                 </select>
             </div>
@@ -96,10 +125,11 @@ onMounted(loadStudents);
             </button>
         </div>
         <p class="text-sm text-gray-600 mb-3">
-            Enter amounts only for students who paid — blank rows are skipped.
-            Each amount clears the student's <span class="font-semibold">oldest arrears first</span>,
-            then the selected term; any excess prepays the following terms.
-            Total entered: <span class="font-bold text-navy">{{ money(totalEntered) }}</span>
+            The <span class="font-semibold">Outstanding</span> column is each student's current balance for
+            {{ selectedTerm }} — use it to cross-check against paper records. Enter the amount paid (to date, if
+            this is their first entry in the system); blank rows are skipped. Each amount clears the student's
+            <span class="font-semibold">oldest arrears first</span>, then the selected term; any excess prepays
+            the following terms. Total entered: <span class="font-bold text-navy">{{ money(totalEntered) }}</span>
         </p>
         <p v-if="message" class="text-sm font-medium mb-3" :class="message.startsWith('Recorded') ? 'text-green-600' : 'text-red-accent'">{{ message }}</p>
 
@@ -108,20 +138,30 @@ onMounted(loadStudents);
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adm No.</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding ({{ selectedTerm }})</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining After</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
                 <tr v-for="r in rows" :key="r.student_id" class="hover:bg-gray-50">
                     <td class="px-6 py-2 whitespace-nowrap text-sm font-medium text-navy">{{ r.admission_number }}</td>
                     <td class="px-6 py-2 whitespace-nowrap text-sm text-gray-900">{{ r.name }}</td>
+                    <td class="px-6 py-2 whitespace-nowrap text-sm text-right">
+                        <span v-if="loadingBalances" class="text-gray-300">…</span>
+                        <span v-else-if="r.outstanding === null" class="text-gray-300">—</span>
+                        <span v-else class="font-semibold" :class="r.outstanding > 0 ? 'text-red-accent' : 'text-green-600'">{{ money(r.outstanding) }}</span>
+                    </td>
                     <td class="px-6 py-2">
                         <input v-model="r.amount" type="number" min="0" step="0.01" placeholder="—"
                                class="border border-gray-300 p-1.5 rounded-md w-36 text-sm focus:ring-navy focus:border-navy" />
                     </td>
+                    <td class="px-6 py-2 whitespace-nowrap text-sm text-right text-gray-500">
+                        {{ remainingAfter(r) === null ? '—' : money(remainingAfter(r)) }}
+                    </td>
                 </tr>
                 <tr v-if="rows.length === 0">
-                    <td colspan="3" class="px-6 py-8 text-center text-gray-500 text-sm">No students in this grade.</td>
+                    <td colspan="5" class="px-6 py-8 text-center text-gray-500 text-sm">No students in this grade.</td>
                 </tr>
             </tbody>
         </table>

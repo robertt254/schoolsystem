@@ -466,7 +466,8 @@ class ExamResultEntry(BaseModel):
 class ExamBulkCreate(BaseModel):
     grade_level: str
     term: str
-    exam_type: str = Field(..., pattern=r"^(CAT1|CAT2|MidTerm|EndTerm)$")
+    # The school runs exactly three exams per term
+    exam_type: str = Field(..., pattern=r"^(Opener|MidTerm|EndTerm)$")
     subject: str = Field(..., min_length=1, max_length=100)
     academic_year: int = Field(..., ge=2020, le=2100)
     results: List[ExamResultEntry]

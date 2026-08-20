@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../api';
 import SchoolBadge from '../components/SchoolBadge.vue';
-import { gradeLabel } from '../utils/grading';
+import { gradeLabel, examTypeLabel } from '../utils/grading';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
@@ -294,7 +294,7 @@ onMounted(async () => {
             <tbody class="bg-white divide-y divide-gray-200">
                 <tr v-for="r in examResults" :key="r.id">
                     <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ r.subject }}</td>
-                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ r.exam_type }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ examTypeLabel(r.exam_type) }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ r.marks }}/{{ r.max_marks }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ Math.round(r.marks / r.max_marks * 100) }}%</td>
                     <td class="px-6 py-3 whitespace-nowrap">

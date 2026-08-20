@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import api from '../api';
-import { gradeLabel } from '../utils/grading';
+import { gradeLabel, EXAM_TYPES, examTypeLabel } from '../utils/grading';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
@@ -12,12 +12,12 @@ const grades = [
     "Grade 4", "Grade 5", "Grade 6"
 ];
 const terms = ["Term 1", "Term 2", "Term 3"];
-const examTypes = ["CAT1", "CAT2", "MidTerm", "EndTerm"];
+const examTypes = EXAM_TYPES;
 
 const filters = ref({
     grade: 'Grade 1',
     term: 'Term 1',
-    exam_type: 'EndTerm',
+    exam_type: 'Opener',
     subject: '',
     academic_year: new Date().getFullYear(),
     max_marks: 100
@@ -95,7 +95,7 @@ const saveMarks = async () => {
                 max_marks: parseInt(filters.value.max_marks)
             }))
         });
-        message.value = `Saved ${res.data.saved} result(s) for ${filters.value.subject} (${filters.value.exam_type}).`;
+        message.value = `Saved ${res.data.saved} result(s) for ${filters.value.subject} (${examTypeLabel(filters.value.exam_type)}).`;
         loadResults();
     } catch (e) {
         console.error(e);
@@ -143,7 +143,7 @@ onMounted(async () => {
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Exam</label>
                 <select v-model="filters.exam_type" @change="loadEntrySheet" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
-                    <option v-for="e in examTypes" :key="e" :value="e">{{ e }}</option>
+                    <option v-for="e in examTypes" :key="e" :value="e">{{ examTypeLabel(e) }}</option>
                 </select>
             </div>
             <div>

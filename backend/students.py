@@ -8,10 +8,8 @@ import models
 import schemas
 import auth
 from audit import log_action
-from constants import CBC_TERMLY_FEES, CBC_GRADES
-from fees import _owes_term
-
-_CBC_FEES = CBC_TERMLY_FEES   # local alias
+from constants import CBC_GRADES
+from fees import _expected_fee_for_student, _expected_fee_map, _expected_from_map_for_student
 
 router = APIRouter(prefix="/api/students", tags=["Students"])
 
@@ -85,7 +83,6 @@ def get_class_roster(
         return []
 
     ids = [s.id for s in students]
-    year = datetime.now().year
 
     # Batch: attendance counts per student
     att_rows = db.query(
@@ -95,21 +92,11 @@ def get_class_roster(
     ).filter(models.Attendance.student_id.in_(ids)).group_by(models.Attendance.student_id).all()
     att = {r.student_id: (int(r.total), int(r.present)) for r in att_rows}
 
-    # Batch: fee structures for this grade this year (same for all students in grade)
-    fee_structs = {
-        fs.term: float(fs.amount)
-        for fs in db.query(models.FeeStructure).filter(
-            models.FeeStructure.grade_level == grade,
-            models.FeeStructure.academic_year == year,
-        ).all()
-    }
+    # Batch: fee structures for the year, using the same shared helper the
+    # finance module uses — avoids duplicating the mid-year-joiner logic here.
+    fee_map = _expected_fee_map(db)
     def annual_expected_for(s) -> float:
-        """Mid-year joiners are only billed from their admission term onwards."""
-        return sum(
-            fee_structs.get(t, _CBC_FEES.get(grade, 0.0))
-            for t in ["Term 1", "Term 2", "Term 3"]
-            if _owes_term(s, t)
-        )
+        return sum(_expected_from_map_for_student(fee_map, s, t) for t in ["Term 1", "Term 2", "Term 3"])
 
     # Batch: total paid per student (all terms)
     paid_rows = db.query(
@@ -307,22 +294,10 @@ def get_student_profile(
     ).scalar() or 0
     att_pct = round(days_present / total_days * 100) if total_days > 0 else 100
 
-    # Annual fee balance (all three terms this academic year)
-    year = datetime.now().year
-    total_expected = 0.0
+    # Annual fee balance (all three terms this academic year) — nothing for
+    # terms before a mid-year joiner's admission term.
     terms = ["Term 1", "Term 2", "Term 3"]
-
-    fee_structures = db.query(models.FeeStructure).filter(
-        models.FeeStructure.grade_level == student.grade_level,
-        models.FeeStructure.term.in_(terms),
-        models.FeeStructure.academic_year == year,
-    ).all()
-
-    found_terms = {fs.term: float(fs.amount) for fs in fee_structures}
-    for term in terms:
-        if not _owes_term(student, term):
-            continue   # joined mid-year — earlier terms are not owed
-        total_expected += found_terms.get(term, _CBC_FEES.get(student.grade_level, 0.0))
+    total_expected = round(sum(_expected_fee_for_student(db, student, t) for t in terms), 2)
 
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount)).filter(
@@ -455,9 +430,8 @@ def deactivate_student(
         .filter(models.FeePayment.student_id == student_id)
         .scalar() or 0
     )
-    from fees import _get_expected_fee
     total_expected = sum(
-        _get_expected_fee(db, db_student.grade_level, t)
+        _expected_fee_for_student(db, db_student, t)
         for t in ["Term 1", "Term 2", "Term 3"]
     )
     outstanding = round(total_expected - total_paid, 2)

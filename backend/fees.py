@@ -629,7 +629,8 @@ def get_term_summary(
         models.Student.status == "Active",
     ).all()
 
-    total_expected = round(sum(_get_expected_fee(db, s.grade_level, term) for s in students), 2)
+    fee_map = _expected_fee_map(db)
+    total_expected = round(sum(_expected_from_map_for_student(fee_map, s, term) for s in students), 2)
 
     # Effective collection: capped per-student so overpayments don't inflate %
     total_collected = compute_effective_term_collection(db, students, term)
@@ -689,19 +690,10 @@ def get_defaulters(
     year = datetime.now().year
 
     # ── 1. Load termly tuition structures for this year in one query ───────
-    fee_structs = {
-        (fs.grade_level, fs.term): float(fs.amount)
-        for fs in db.query(models.FeeStructure)
-        .filter(
-            models.FeeStructure.academic_year == year,
-            models.FeeStructure.fee_type == "Tuition",
-        ).all()
-    }
+    fee_map = _expected_fee_map(db)
 
     def expected_fee(s, t: str) -> float:
-        if not _owes_term(s, t):
-            return 0.0
-        return fee_structs.get((s.grade_level, t), CBC_TERMLY_FEES_FALLBACK.get(s.grade_level, 0.0))
+        return _expected_from_map_for_student(fee_map, s, t)
 
     # ── 2. Load all payments grouped by (student_id, term) ─────────────────
     pay_rows = db.query(

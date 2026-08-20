@@ -7,3 +7,9 @@ export function gradeLabel(marks, maxMarks = 100) {
   if (pct >= 60) return { label: 'Approaching Expectation', abbr: 'AE', cls: 'bg-yellow-100 text-yellow-800' };
   return { label: 'Below Expectation', abbr: 'BE', cls: 'bg-red-100 text-red-800' };
 }
+
+// The school runs exactly three exams per term. Stored without spaces
+// (matches the pre-existing MidTerm/EndTerm convention); display with spaces.
+export const EXAM_TYPES = ['Opener', 'MidTerm', 'EndTerm'];
+export const EXAM_TYPE_LABELS = { Opener: 'Opener', MidTerm: 'Mid Term', EndTerm: 'End Term' };
+export const examTypeLabel = (t) => EXAM_TYPE_LABELS[t] || t;

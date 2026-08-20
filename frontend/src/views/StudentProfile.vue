@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../api';
-import { gradeLabel } from '../utils/grading';
+import { gradeLabel, examTypeLabel } from '../utils/grading';
 
 const route = useRoute();
 const profile = ref(null);
@@ -147,7 +147,7 @@ onMounted(load);
                 <tbody class="bg-white divide-y divide-gray-200">
                     <tr v-for="r in examResults" :key="r.id" class="hover:bg-gray-50">
                         <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ r.subject }}</td>
-                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ r.exam_type }}</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ examTypeLabel(r.exam_type) }}</td>
                         <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ r.term }} {{ r.academic_year }}</td>
                         <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ r.marks }}/{{ r.max_marks }}</td>
                         <td class="px-6 py-3 whitespace-nowrap">

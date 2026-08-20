@@ -244,7 +244,7 @@ class ExamResult(Base):
     student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     grade_level = Column(String(20), nullable=False, index=True)
     subject = Column(String(100), nullable=False)
-    exam_type = Column(String(20), nullable=False)   # CAT1 | CAT2 | MidTerm | EndTerm
+    exam_type = Column(String(20), nullable=False)   # Opener | MidTerm | EndTerm
     marks = Column(Numeric(5, 1), nullable=False)
     max_marks = Column(Integer, nullable=False, server_default="100")
     term = Column(String(10), nullable=False)

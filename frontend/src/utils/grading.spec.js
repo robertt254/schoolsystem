@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gradeLabel } from './grading';
+import { gradeLabel, EXAM_TYPES, examTypeLabel } from './grading';
 
 describe('CBC grading scale (Bona School thresholds)', () => {
   it('maps 80% and above to Exceeding Expectation', () => {
@@ -31,5 +31,21 @@ describe('CBC grading scale (Bona School thresholds)', () => {
   it('provides full labels for report cards', () => {
     expect(gradeLabel(85).label).toBe('Exceeding Expectation');
     expect(gradeLabel(45).label).toBe('Below Expectation');
+  });
+});
+
+describe('exam types (the school runs exactly three exams per term)', () => {
+  it('exposes only Opener, MidTerm and EndTerm', () => {
+    expect(EXAM_TYPES).toEqual(['Opener', 'MidTerm', 'EndTerm']);
+  });
+
+  it('labels MidTerm/EndTerm with spaces for display, Opener unchanged', () => {
+    expect(examTypeLabel('Opener')).toBe('Opener');
+    expect(examTypeLabel('MidTerm')).toBe('Mid Term');
+    expect(examTypeLabel('EndTerm')).toBe('End Term');
+  });
+
+  it('falls back to the raw value for unknown/legacy exam types', () => {
+    expect(examTypeLabel('CAT1')).toBe('CAT1');
   });
 });
