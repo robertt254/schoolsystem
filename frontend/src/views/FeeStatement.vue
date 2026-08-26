@@ -4,6 +4,7 @@ import api from '../api';
 import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import SchoolBadge from '../components/SchoolBadge.vue';
+import { printElement } from '../utils/printFrame';
 
 const authStore = useAuthStore();
 const students = ref([]);
@@ -72,7 +73,8 @@ const removeCarryForward = async (cf) => {
     }
 };
 
-const printStatement = () => window.print();
+const statementRoot = ref(null);
+const printStatement = () => printElement(statementRoot.value, `Fee Statement — ${studentInfo.value?.first_name || ''} ${studentInfo.value?.last_name || ''}`);
 
 // Branded receipt for a single payment
 const receipt = ref(null);
@@ -118,7 +120,7 @@ onMounted(loadStudents);
     </div>
 
     <template v-if="studentInfo">
-      <div class="print-area space-y-8">
+      <div ref="statementRoot" class="print-area space-y-8">
         <!-- Print-only letterhead -->
         <div class="hidden print:block text-center border-b-2 border-navy pb-4">
             <div class="flex justify-center mb-2">

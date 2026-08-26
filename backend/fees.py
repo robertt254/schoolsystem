@@ -737,6 +737,27 @@ def get_defaulters(
 
         balance = round(max(0.0, exp + carry_fwd - paid - rollover), 2)
         if balance > 0:
+            # Full term-by-term breakdown up to and including the selected
+            # term (every term still owing something) — lets the Defaulters
+            # page print a one-page arrears invoice per student without any
+            # further round trips, same shape as the receipt/statement view.
+            term_breakdown = []
+            running_cum_exp = running_cum_paid = 0.0
+            for tnum in range(1, current_term_num + 1):
+                t = TERM_BY_NUM[tnum]
+                exp_t = expected_fee(s, t)
+                paid_t = paid_map.get((s.id, t), 0.0)
+                carry_t = cf_map.get((s.id, t), 0.0)
+                rollover_t = max(0.0, round(running_cum_paid - running_cum_exp, 2))
+                bal_t = round(max(0.0, exp_t + carry_t - paid_t - rollover_t), 2)
+                if bal_t > 0:
+                    term_breakdown.append({
+                        "term": t, "expected": exp_t, "paid": paid_t,
+                        "carry_forward": carry_t, "outstanding": bal_t,
+                    })
+                running_cum_exp += exp_t
+                running_cum_paid += paid_t
+
             defaulters.append({
                 "student_id": s.id,
                 "student_name": f"{s.first_name} {s.last_name}",
@@ -747,6 +768,8 @@ def get_defaulters(
                 "total_paid": paid,
                 "rollover_credit": rollover,
                 "outstanding_balance": balance,
+                "term_breakdown": term_breakdown,
+                "total_arrears": round(sum(x["outstanding"] for x in term_breakdown), 2),
             })
     return defaulters
 

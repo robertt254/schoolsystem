@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import SchoolBadge from './SchoolBadge.vue';
+import { printElement } from '../utils/printFrame';
 
 const props = defineProps({
     // { receipt_number, student_id, student_name, admission_number, grade_level,
@@ -12,7 +13,13 @@ const emit = defineEmits(['close']);
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
-const printReceipt = () => window.print();
+
+// A template ref, not document.querySelector('.print-area') — the page this
+// modal opens over (Fee Statement, Finance Dashboard...) often has its own
+// .print-area in the DOM at the same time, and a class query could grab
+// that instead of (or as well as) this receipt.
+const receiptRoot = ref(null);
+const printReceipt = () => printElement(receiptRoot.value, `Receipt ${props.payment.receipt_number || ''}`);
 
 // Full-year arrears (all three terms), fetched live so the receipt always
 // reflects the student's total outstanding position after this payment —
@@ -36,7 +43,7 @@ onMounted(async () => {
 
 <template>
   <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-    <div class="relative w-full max-w-md bg-white rounded-xl shadow-lg p-8 print-area">
+    <div ref="receiptRoot" class="relative w-full max-w-md bg-white rounded-xl shadow-lg p-8 print-area">
         <div class="flex justify-between items-center mb-4 no-print">
             <button @click="printReceipt" class="bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light text-sm">Print Receipt</button>
             <button @click="emit('close')" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>

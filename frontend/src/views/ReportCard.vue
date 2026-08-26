@@ -5,6 +5,7 @@ import api from '../api';
 import SchoolBadge from '../components/SchoolBadge.vue';
 import { gradeLabel, examTypeLabel } from '../utils/grading';
 import { useAuthStore } from '../stores/auth';
+import { printElement } from '../utils/printFrame';
 
 const authStore = useAuthStore();
 
@@ -41,7 +42,8 @@ const generate = async () => {
     } catch (e) { console.error(e); }
 };
 
-const printCard = () => window.print();
+const reportRoot = ref(null);
+const printCard = () => printElement(reportRoot.value, `Report Card — ${report.value?.student_name || ''}`);
 
 // ── Whole-class printing: one card per student, page break between them ─────
 const grades = [
@@ -85,7 +87,8 @@ const generateClass = async () => {
     loadingClass.value = false;
 };
 
-const printClass = () => window.print();
+const classCardsRoot = ref(null);
+const printClass = () => printElement(classCardsRoot.value, `Report Cards — ${classGrade.value}`);
 
 onMounted(async () => {
     await loadStudents();
@@ -154,7 +157,7 @@ onMounted(async () => {
     </div>
 
     <!-- Class cards (one per page when printed) -->
-    <div v-if="classCards.length" class="print-area space-y-8">
+    <div v-if="classCards.length" ref="classCardsRoot" class="print-area space-y-8">
         <div v-for="card in classCards" :key="card.student_id"
              class="bg-white rounded-xl shadow-sm border border-gray-200 p-8"
              style="page-break-after: always;">
@@ -233,7 +236,7 @@ onMounted(async () => {
     </div>
 
     <!-- Report card -->
-    <div v-if="report" class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print-area">
+    <div v-if="report" ref="reportRoot" class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 print-area">
         <div class="text-center border-b pb-4 mb-6">
             <div class="flex justify-center mb-2">
                 <SchoolBadge :size="88" />
