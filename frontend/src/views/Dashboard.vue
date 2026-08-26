@@ -8,7 +8,8 @@ const authStore = useAuthStore();
 const stats = ref({
   total_students: 0,
   total_staff: 0,
-  total_revenue: 0,
+  total_revenue: null,
+  upcoming_events: 0,
   today_attendance_pct: null,
   term_collected: 0,
   term_expected: 0,
@@ -73,10 +74,19 @@ onMounted(load);
         <p class="text-3xl font-bold text-navy">{{ stats.total_staff }}</p>
         <router-link to="/teachers" class="text-sm text-blue-500 hover:underline">View Staff</router-link>
       </div>
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <!-- Net revenue reveals what the school makes — admin/principal/accountant
+           only (matches authStore.canFinance and the backend's REVENUE_VISIBLE_ROLES).
+           Other roles see upcoming events here instead. -->
+      <div v-if="authStore.canFinance" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Net Revenue</h3>
         <p class="text-3xl font-bold" :class="stats.total_revenue >= 0 ? 'text-green-600' : 'text-red-accent'">{{ money(stats.total_revenue) }}</p>
-        <router-link v-if="authStore.canFees" to="/finance" class="text-sm text-blue-500 hover:underline">Finance</router-link>
+        <router-link to="/finance" class="text-sm text-blue-500 hover:underline">Finance</router-link>
+      </div>
+      <div v-else class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Upcoming Events</h3>
+        <p class="text-3xl font-bold text-navy">{{ stats.upcoming_events }}</p>
+        <router-link to="/events" class="text-sm text-blue-500 hover:underline">View Events</router-link>
+        <p class="text-xs text-gray-400 mt-1">Next 7 days</p>
       </div>
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Attendance Today</h3>

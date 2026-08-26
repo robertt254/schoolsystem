@@ -80,6 +80,11 @@ class FeePayment(Base):
     # e.g. [{"term": "Term 1", "amount": 5000, "kind": "arrears"},
     #       {"term": "Term 2", "amount": 3000, "kind": "current"}]
     allocation = Column(Text, nullable=True)
+    # Which activity this payment applies to, when payment_type is Transport or
+    # Co-curricular (e.g. "Transport", "Swimming", "French (Grade 1)"). NULL for
+    # ordinary tuition/uniform/exam payments. Matches FeeStructure.fee_type and
+    # ActivityEnrollment.activity_name so arrears can be computed per activity.
+    activity = Column(String(100), nullable=True)
 
 
 class FeeStructure(Base):
@@ -129,6 +134,30 @@ class FeeCarryForward(Base):
     note = Column(String(200), nullable=True)
     recorded_by = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ActivityEnrollment(Base):
+    """Tracks which student is subscribed to which optional activity
+    (Transport, Swimming, French, etc.) for a given academic year. A student
+    owes that activity's fee from `enrolled_term` onward — same idea as
+    Student.admission_term for tuition. `is_active` controls whether the
+    student still appears on the current roster; past terms already billed
+    remain collectible even after a student drops the activity."""
+    __tablename__ = "activity_enrollments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    activity_name = Column(String(100), nullable=False, index=True)   # matches FeeStructure.fee_type
+    academic_year = Column(Integer, nullable=False)
+    enrolled_term = Column(String(10), nullable=False, default="Term 1", server_default="Term 1")
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    recorded_by = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('student_id', 'activity_name', 'academic_year',
+                         name='uq_activity_enrollment'),
+    )
 
 
 class Attendance(Base):

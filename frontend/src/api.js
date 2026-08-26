@@ -297,6 +297,28 @@ export default {
   bulkSaveFeeStructure(entries) {
     return api.post('/api/fees/structure/bulk', entries);
   },
+
+  // ── Transport & Co-curricular Activities ─────────────────────────────────
+  getActivities(year) {
+    return api.get('/api/activities/', { params: year ? { year } : {} });
+  },
+  getStudentActivityEnrollments(studentId, academicYear) {
+    return api.get(`/api/activities/enrollments/${studentId}`,
+      { params: academicYear ? { academic_year: academicYear } : {} });
+  },
+  subscribeToActivity(payload) {
+    return api.post('/api/activities/enrollments', payload);
+  },
+  unsubscribeFromActivity(enrollmentId) {
+    return api.delete(`/api/activities/enrollments/${enrollmentId}`);
+  },
+  getActivityRoster(activityName, term, academicYear) {
+    return api.get(`/api/activities/${encodeURIComponent(activityName)}/roster`,
+      { params: { term, ...(academicYear ? { academic_year: academicYear } : {}) } });
+  },
+  recordActivityPayment(payload) {
+    return api.post('/api/activities/payments', payload);
+  },
   updateFeeStructureEntry(entryId, entry) {
     return api.put(`/api/fees/structure/${entryId}`, entry);
   },

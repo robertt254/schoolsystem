@@ -53,6 +53,7 @@ class PaymentType(str, Enum):
     uniforms = "Uniforms"
     transport = "Transport"
     exam_fees = "Exam Fees"
+    cocurricular = "Co-curricular"
 
 
 class StudentBase(BaseModel):
@@ -121,6 +122,10 @@ class FeeBase(BaseModel):
     amount: float = Field(..., gt=0, description="Payment amount must be positive")
     payment_type: PaymentType
     term: Term
+    # Which activity this payment is for — only meaningful when payment_type is
+    # Transport or Co-curricular (e.g. "Transport", "Swimming"). Ignored/blank
+    # for ordinary tuition, uniform and exam-fee payments.
+    activity: Optional[str] = Field(None, max_length=100)
 
 
 class FeeCreate(FeeBase):
@@ -135,6 +140,7 @@ class BulkPaymentItem(BaseModel):
     amount: float = Field(..., gt=0, description="Payment amount must be positive")
     payment_type: PaymentType = PaymentType.tuition
     term: Term
+    activity: Optional[str] = Field(None, max_length=100)
     payment_date: Optional[datetime] = None  # backlog entry from paper records
 
 
@@ -352,6 +358,74 @@ class FeeStructureResponse(FeeStructureCreate):
 
     class Config:
         from_attributes = True
+
+
+# ── Activity / Transport subscriptions ─────────────────────────────────────────
+
+class ActivityInfo(BaseModel):
+    """A subscribable activity (Transport or a co-curricular item) and its
+    configured termly price for a given year."""
+    activity_name: str
+    category: str          # 'Transport' | 'Optional'
+    amount: float
+
+
+class ActivityEnrollmentCreate(BaseModel):
+    student_id: int
+    activity_name: str = Field(..., min_length=1, max_length=100)
+    academic_year: int = Field(..., ge=2020, le=2100)
+    enrolled_term: Term = Term.term_1
+
+
+class ActivityEnrollmentResponse(BaseModel):
+    id: int
+    student_id: int
+    student_name: str
+    admission_number: str
+    grade_level: str
+    activity_name: str
+    academic_year: int
+    enrolled_term: str
+    is_active: bool
+    recorded_by: str
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ActivityRosterEntry(BaseModel):
+    """One subscriber's expected/paid/arrears for an activity, up to a given term."""
+    enrollment_id: int
+    student_id: int
+    student_name: str
+    admission_number: str
+    grade_level: str
+    enrolled_term: str
+    is_active: bool
+    expected: float
+    paid: float
+    outstanding: float
+
+
+class ActivityRosterResponse(BaseModel):
+    activity_name: str
+    term: str
+    academic_year: int
+    unit_price: float
+    entries: List[ActivityRosterEntry]
+    total_expected: float
+    total_paid: float
+    total_outstanding: float
+
+
+class ActivityPaymentCreate(BaseModel):
+    student_id: int
+    activity_name: str = Field(..., min_length=1, max_length=100)
+    amount: float = Field(..., gt=0)
+    term: Term
+    academic_year: int = Field(..., ge=2020, le=2100)
+    payment_date: Optional[datetime] = None  # backlog entry from paper records
 
 
 class AttendanceCreate(BaseModel):

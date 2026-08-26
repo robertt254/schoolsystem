@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import SchoolBadge from './SchoolBadge.vue';
 
@@ -14,17 +14,22 @@ const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
 const printReceipt = () => window.print();
 
-// Remaining balance for the school's current term, fetched live so the
-// receipt always reflects the position after this payment.
-const balance = ref(null);
+// Full-year arrears (all three terms), fetched live so the receipt always
+// reflects the student's total outstanding position after this payment —
+// not just the current term.
+const ALL_TERMS = ["Term 1", "Term 2", "Term 3"];
+const termBalances = ref([]);
+const totalArrears = computed(() =>
+    termBalances.value.reduce((s, b) => s + (b.outstanding_balance || 0), 0));
+
 onMounted(async () => {
     if (!props.payment.student_id) return;
     try {
-        const termRes = await api.getCurrentTerm();
-        const res = await api.getStudentFeeBalance(props.payment.student_id, termRes.data.term);
-        balance.value = res.data;
+        const results = await Promise.all(
+            ALL_TERMS.map(t => api.getStudentFeeBalance(props.payment.student_id, t)));
+        termBalances.value = results.map(r => r.data);
     } catch (e) {
-        console.error('Could not load current-term balance for receipt', e);
+        console.error('Could not load arrears breakdown for receipt', e);
     }
 });
 </script>
@@ -70,10 +75,23 @@ onMounted(async () => {
             <span class="text-2xl font-extrabold text-navy">{{ money(payment.amount) }}</span>
         </div>
 
-        <div v-if="balance" class="flex justify-between items-center bg-gray-bg rounded-md p-3 mb-4 text-sm">
-            <span class="text-gray-600">Remaining balance — {{ balance.term_checked }}</span>
-            <span v-if="balance.outstanding_balance > 0" class="font-bold text-red-accent">{{ money(balance.outstanding_balance) }}</span>
-            <span v-else class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Fully settled</span>
+        <div v-if="termBalances.length" class="bg-gray-bg rounded-md p-3 mb-4 text-sm">
+            <p class="text-gray-500 font-semibold uppercase text-xs tracking-wide mb-2">Outstanding Balances (This Year)</p>
+            <template v-if="totalArrears > 0">
+                <div v-for="b in termBalances.filter(b => b.outstanding_balance > 0)" :key="b.term_checked"
+                     class="flex justify-between py-0.5">
+                    <span class="text-gray-600">{{ b.term_checked }}</span>
+                    <span class="font-semibold text-red-accent">{{ money(b.outstanding_balance) }}</span>
+                </div>
+                <div class="flex justify-between items-center border-t border-navy/20 mt-2 pt-2">
+                    <span class="font-bold text-navy uppercase text-xs">Total Arrears</span>
+                    <span class="font-bold text-red-accent">{{ money(totalArrears) }}</span>
+                </div>
+            </template>
+            <div v-else class="flex justify-between items-center">
+                <span class="text-gray-600">All terms</span>
+                <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Fully settled</span>
+            </div>
         </div>
 
         <div v-if="payment.allocation && payment.allocation.length" class="mb-4 text-sm">

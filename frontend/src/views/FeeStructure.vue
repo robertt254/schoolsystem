@@ -189,6 +189,7 @@ onMounted(load);
                     <option value="Termly">Termly item</option>
                     <option value="Daily">Daily</option>
                     <option value="Optional">Optional activity</option>
+                    <option value="Transport">Transport</option>
                 </select>
             </div>
             <div>

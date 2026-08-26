@@ -27,6 +27,7 @@ import exams
 import library
 import events
 import discipline
+import activities
 from database import engine, SessionLocal
 from limiter import limiter
 
@@ -111,6 +112,8 @@ async def startup():
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS term VARCHAR(10) NOT NULL DEFAULT 'Term 1'",
         # Per-payment waterfall allocation breakdown (JSON) shown on receipts.
         "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS allocation TEXT",
+        # Which subscribed activity (Transport/co-curricular) a payment is for.
+        "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS activity VARCHAR(100)",
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS updated_at   TIMESTAMPTZ DEFAULT NOW()",
         # timetable & leave tables created via create_all; extra safety cols below
         "ALTER TABLE timetable       ADD COLUMN IF NOT EXISTS created_by   VARCHAR(100) NOT NULL DEFAULT 'system'",
@@ -315,6 +318,7 @@ app.include_router(library.router)
 app.include_router(events.router)
 app.include_router(events.cal_router)
 app.include_router(discipline.router)
+app.include_router(activities.router)
 app.include_router(backup.router)
 app.include_router(admin.router)
 

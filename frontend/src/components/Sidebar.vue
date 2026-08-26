@@ -38,6 +38,7 @@ const groups = computed(() => [
         links: [
             { to: '/finance', label: 'Finance Dashboard' },
             { to: '/bulk-payments', label: 'Bulk Payments' },
+            { to: '/activities', label: 'Transport & Activities' },
             { to: '/defaulters', label: 'Defaulters' },
             { to: '/fee-statement', label: 'Fee Statement' },
             { to: '/fee-structure', label: 'Fee Structure' },

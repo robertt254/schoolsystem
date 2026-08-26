@@ -34,6 +34,10 @@ _COCURRICULAR_TEMPLATE = {
     "French (Grade 1)": 2000, "Skating": 3500, "Ballet": 3000, "Modern Dance": 3000,
     "Swimming": 0, "Computer": 0, "Coding": 0, "Martial Art": 0, "Scouts": 0, "Football": 0,
 }
+# Transport is optional and priced separately from tuition — students opt in
+# per ActivityEnrollment. Flat termly fee by default; a school running
+# distance-based routes can add further rows (e.g. "Transport - Route A").
+_TRANSPORT_TEMPLATE = {"Transport": 0}
 
 # term-category labels for non-grade items (stored in FeeStructure.term)
 GENERAL_GRADE = "General"
@@ -41,6 +45,10 @@ CAT_ADMISSION = "Once"
 CAT_DAILY = "Daily"
 CAT_OTHER = "Termly"
 CAT_COCURRICULAR = "Optional"
+CAT_TRANSPORT = "Transport"
+# Categories billed per-subscriber via ActivityEnrollment rather than to every
+# student in a grade — used by the activities/transport arrears engine.
+SUBSCRIPTION_CATEGORIES = (CAT_COCURRICULAR, CAT_TRANSPORT)
 
 
 def fee_structure_template_rows(year: int):
@@ -59,6 +67,9 @@ def fee_structure_template_rows(year: int):
                      "amount": float(amount), "academic_year": year})
     for name, amount in _COCURRICULAR_TEMPLATE.items():
         rows.append({"grade_level": GENERAL_GRADE, "term": CAT_COCURRICULAR, "fee_type": name,
+                     "amount": float(amount), "academic_year": year})
+    for name, amount in _TRANSPORT_TEMPLATE.items():
+        rows.append({"grade_level": GENERAL_GRADE, "term": CAT_TRANSPORT, "fee_type": name,
                      "amount": float(amount), "academic_year": year})
     return rows
 

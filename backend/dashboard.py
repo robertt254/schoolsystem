@@ -2,12 +2,17 @@ import json
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date
-from datetime import date
+from datetime import date, timedelta
 from database import get_db
 import models, auth
 from fees import _expected_fee_map, _expected_from_map_for_student, _paid_map, TERM_ORDER, TERM_BY_NUM
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
+
+# Net revenue reveals what the school makes — restricted to the roles who
+# also see it on the Finance Dashboard's term-accountability table (see
+# auth.js `canFinance` on the frontend, mirrored here server-side).
+REVENUE_VISIBLE_ROLES = {"admin", "principal", "accountant"}
 
 GRADE_ORDER = [
     "Play Group", "PP1", "PP2",
@@ -28,14 +33,26 @@ def get_dashboard_stats(
 
     total_staff = db.query(func.count(models.User.id)).scalar() or 0
 
-    # Net revenue = total fees collected minus payroll and expenses disbursed
-    total_fees     = float(db.query(func.sum(models.FeePayment.amount)).scalar() or 0)
-    total_payroll  = float(db.query(func.sum(models.Payroll.net_pay)).scalar() or 0)
-    total_expenses = float(db.query(func.sum(models.Expense.amount)).scalar() or 0)
-    net_revenue    = round(total_fees - total_payroll - total_expenses, 2)
+    # Net revenue = total fees collected minus payroll and expenses disbursed.
+    # What the school makes is restricted to admin/principal/accountant —
+    # omitted entirely for other roles rather than sent as 0 (which could be
+    # misread as "no revenue").
+    net_revenue = None
+    if current_user.role in REVENUE_VISIBLE_ROLES:
+        total_fees     = float(db.query(func.sum(models.FeePayment.amount)).scalar() or 0)
+        total_payroll  = float(db.query(func.sum(models.Payroll.net_pay)).scalar() or 0)
+        total_expenses = float(db.query(func.sum(models.Expense.amount)).scalar() or 0)
+        net_revenue    = round(total_fees - total_payroll - total_expenses, 2)
+
+    # Upcoming events (next 7 days) — shown in place of Net Revenue for roles
+    # that can't see school financials.
+    today = date.today()
+    upcoming_events = db.query(func.count(models.SchoolEvent.id)).filter(
+        models.SchoolEvent.start_date >= today,
+        models.SchoolEvent.start_date <= today + timedelta(days=7),
+    ).scalar() or 0
 
     # Today's attendance rate
-    today = date.today()
     today_records = db.query(func.count(models.Attendance.id)).filter(
         cast(models.Attendance.date, Date) == today
     ).scalar() or 0
@@ -141,6 +158,7 @@ def get_dashboard_stats(
         "total_students": total_students,
         "total_staff": total_staff,
         "total_revenue": net_revenue,
+        "upcoming_events": upcoming_events,
         "today_attendance_pct": today_attendance_pct,
         "today_records": today_records,
         "term_collected": term_collected,
