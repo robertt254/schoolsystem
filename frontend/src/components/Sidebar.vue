@@ -83,7 +83,7 @@ const toggle = (key) => {
 </script>
 
 <template>
-  <aside class="w-64 bg-navy text-white flex flex-col shadow-lg flex-shrink-0 min-h-screen">
+  <aside class="w-64 bg-navy text-white flex flex-col shadow-lg flex-shrink-0 h-screen">
     <div class="p-6 border-b border-navy-light">
       <h1 class="text-2xl font-bold text-red-accent">THE BONA SCHOOL</h1>
       <p class="text-xs uppercase tracking-widest text-gray-400">In Truth We Excel</p>

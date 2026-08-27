@@ -171,7 +171,8 @@ def create_student(
     db.add(new_student)
     db.flush()
     log_action(db, current_user.id, "CREATE", "student", new_student.id,
-               {"admission_number": admission_number})
+               {"admission_number": admission_number,
+                "first_name": new_student.first_name, "last_name": new_student.last_name})
     db.commit()
     db.refresh(new_student)
     return new_student
@@ -210,7 +211,8 @@ def bulk_import_students(
         db.add(new_student)
         db.flush()
         log_action(db, current_user.id, "CREATE", "student", new_student.id,
-                   {"admission_number": admission_number, "bulk_import": True})
+                   {"admission_number": admission_number, "bulk_import": True,
+                    "first_name": new_student.first_name, "last_name": new_student.last_name})
         created += 1
 
     db.commit()

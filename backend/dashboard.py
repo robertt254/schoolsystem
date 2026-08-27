@@ -117,12 +117,19 @@ def get_dashboard_stats(
                 detail = json.loads(log.detail)
             except Exception:
                 pass
-        # Build a human-readable description
+        # Build a human-readable description. Branch on the action FIRST, not
+        # on whether a name happens to be present — a chained "A if cond1
+        # else B if cond2 else C" falls through to C (e.g. "removed") for a
+        # CREATE whose logged detail is missing a name, misreporting the
+        # action entirely rather than just omitting the name.
         if log.resource == "student":
             name = f"{detail.get('first_name', '')} {detail.get('last_name', '')}".strip()
-            desc = f"admitted {name}" if log.action == "CREATE" and name else \
-                   f"updated student record" if log.action == "UPDATE" else \
-                   f"removed a student record"
+            if log.action == "CREATE":
+                desc = f"admitted {name}" if name else "admitted a new student"
+            elif log.action == "UPDATE":
+                desc = "updated student record"
+            else:
+                desc = "removed a student record"
         elif log.resource == "fee":
             amount = detail.get("amount")
             if log.action == "DELETE":
@@ -131,9 +138,12 @@ def get_dashboard_stats(
                 desc = f"recorded KES {int(float(amount)):,} payment" if amount else "recorded a fee payment"
         elif log.resource == "staff":
             name = detail.get("username", "")
-            desc = f"hired staff @{name}" if log.action == "CREATE" and name else \
-                   f"updated staff record" if log.action == "UPDATE" else \
-                   f"terminated staff @{name}"
+            if log.action == "CREATE":
+                desc = f"hired staff @{name}" if name else "hired a new staff member"
+            elif log.action == "UPDATE":
+                desc = "updated staff record"
+            else:
+                desc = f"terminated staff @{name}" if name else "terminated a staff member"
         elif log.resource == "assessment":
             desc = "entered CBC assessment scores"
         elif log.resource == "attendance":

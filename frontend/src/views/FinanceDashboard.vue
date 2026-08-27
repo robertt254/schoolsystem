@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
@@ -47,12 +47,30 @@ const monthly = ref([]);
 const maxMonthly = ref(1);
 const message = ref('');
 
-const paymentTypes = ['Tuition', 'Uniforms', 'Transport', 'Exam Fees'];
+// Transport and co-curricular activities now have their own dashboards
+// (Finance → Transport / Co-curricular Activities), each with their own
+// arrears-aware payment recording — this form is fees only.
+const paymentTypes = ['Tuition', 'Uniforms', 'Exam Fees'];
 const newInvoice = ref({ student_id: '', term: '', total_amount: '' });
 const newPayment = ref({ invoice_id: '', amount: '', payment_type: 'Tuition', payment_date: '' });
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleDateString() : '—';
+
+// Type-ahead search so either student picker can be found by name, admission
+// number or class instead of scrolling a long dropdown.
+const invoiceStudentSearch = ref('');
+const paymentStudentSearch = ref('');
+const filterStudents = (query) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return students.value;
+    return students.value.filter(s =>
+        `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) ||
+        (s.admission_number || '').toLowerCase().includes(q) ||
+        (s.grade_level || '').toLowerCase().includes(q));
+};
+const filteredInvoiceStudents = computed(() => filterStudents(invoiceStudentSearch.value));
+const filteredPaymentStudents = computed(() => filterStudents(paymentStudentSearch.value));
 
 const loadDashboard = async () => {
     try {
@@ -231,9 +249,11 @@ onMounted(async () => {
             <form @submit.prevent="createInvoice" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Student</label>
-                    <select v-model="newInvoice.student_id" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
-                        <option value="">Select student</option>
-                        <option v-for="s in students" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
+                    <input v-model="invoiceStudentSearch" type="text" placeholder="Search by name, admission no. or class…"
+                           class="mt-1 mb-2 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    <select v-model="newInvoice.student_id" required class="block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
+                        <option value="">Select student ({{ filteredInvoiceStudents.length }} match{{ filteredInvoiceStudents.length === 1 ? '' : 'es' }})</option>
+                        <option v-for="s in filteredInvoiceStudents" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
                     </select>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
@@ -254,13 +274,15 @@ onMounted(async () => {
 
         <!-- Payments Actions -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Record Payment</h2>
+            <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Record Fees</h2>
             <form @submit.prevent="makePayment" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Student</label>
-                    <select v-model="newPayment.invoice_id" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
-                        <option value="">Select student</option>
-                        <option v-for="s in students" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
+                    <input v-model="paymentStudentSearch" type="text" placeholder="Search by name, admission no. or class…"
+                           class="mt-1 mb-2 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                    <select v-model="newPayment.invoice_id" required class="block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
+                        <option value="">Select student ({{ filteredPaymentStudents.length }} match{{ filteredPaymentStudents.length === 1 ? '' : 'es' }})</option>
+                        <option v-for="s in filteredPaymentStudents" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
                     </select>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
@@ -291,7 +313,7 @@ onMounted(async () => {
                     </span>
                 </div>
                 <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                    Process Payment
+                    Record Fee Payment
                 </button>
                 <p class="text-xs text-gray-400">Payments clear oldest arrears first; the remainder goes to {{ currentTerm }}.</p>
             </form>

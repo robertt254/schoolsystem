@@ -11,7 +11,7 @@ useAutoLogout();
   <div v-if="route.path === '/login'" class="w-full">
       <router-view></router-view>
   </div>
-  <div v-else class="min-h-screen bg-gray-bg flex">
+  <div v-else class="h-screen bg-gray-bg flex overflow-hidden">
     <Sidebar />
     <main class="flex-1 w-full overflow-y-auto">
       <router-view></router-view>
