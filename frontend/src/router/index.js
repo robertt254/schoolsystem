@@ -26,6 +26,7 @@ import Admin from '../views/Admin.vue'
 import FeeStatement from '../views/FeeStatement.vue'
 import BulkPayments from '../views/BulkPayments.vue'
 import ActivityBilling from '../views/ActivityBilling.vue'
+import Transport from '../views/Transport.vue'
 import Reports from '../views/Reports.vue'
 
 const routes = [
@@ -50,6 +51,7 @@ const routes = [
   { path: '/fee-statement', component: FeeStatement, meta: { requiresFees: true } },
   { path: '/bulk-payments', component: BulkPayments, meta: { requiresFees: true } },
   { path: '/activities', component: ActivityBilling, meta: { requiresFees: true } },
+  { path: '/transport', component: Transport, meta: { requiresFees: true } },
   // School finances — admin/principal/accountant only
   { path: '/expenses', component: Expenses, meta: { requiresFinance: true } },
   { path: '/budgets', component: Budgets, meta: { requiresFinance: true } },

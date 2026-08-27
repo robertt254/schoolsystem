@@ -65,6 +65,7 @@ def _enrollment_response(e: models.ActivityEnrollment, s: models.Student) -> dic
 @router.get("/", response_model=list[schemas.ActivityInfo])
 def list_activities(
     year: Optional[int] = Query(None),
+    category: Optional[str] = Query(None, description="Filter to 'Transport' or 'Optional'"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
@@ -77,6 +78,7 @@ def list_activities(
     return [
         {"activity_name": name, "category": cat, "amount": amount}
         for name, (cat, amount) in sorted(fee_map.items())
+        if not category or cat == category
     ]
 
 

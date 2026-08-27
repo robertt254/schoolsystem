@@ -2,24 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Print only the branded document (receipt, report card, fee statement):
-   everything else on the page is hidden while printing. */
+/* Printable documents (receipts, statements, report cards, arrears invoices)
+   are rendered into an isolated iframe by utils/printFrame.js, containing
+   nothing but the target element itself — the rest of the app is never
+   cloned in, so it needs no hiding here. `.no-print` still matters: it hides
+   screen-only chrome (Print/Close buttons, table action columns) that lives
+   *inside* a printed element and gets cloned along with it.
+   Do NOT reintroduce a "hide everything except .print-area" rule here — it
+   will silently blank out any printable content that doesn't happen to
+   carry that exact class (this bit a new Defaulters arrears invoice once
+   already). */
 @media print {
-  body * {
-    visibility: hidden;
-  }
-  .print-area, .print-area * {
-    visibility: visible;
-  }
-  .print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    box-shadow: none !important;
-    border: none !important;
-  }
   .no-print {
     display: none !important;
+  }
+  .print-area {
+    box-shadow: none !important;
+    border: none !important;
   }
 }

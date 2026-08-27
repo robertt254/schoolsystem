@@ -299,8 +299,8 @@ export default {
   },
 
   // ── Transport & Co-curricular Activities ─────────────────────────────────
-  getActivities(year) {
-    return api.get('/api/activities/', { params: year ? { year } : {} });
+  getActivities(year, category) {
+    return api.get('/api/activities/', { params: { ...(year ? { year } : {}), ...(category ? { category } : {}) } });
   },
   getStudentActivityEnrollments(studentId, academicYear) {
     return api.get(`/api/activities/enrollments/${studentId}`,

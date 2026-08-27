@@ -1,18 +1,24 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import api from '../api';
+import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
 
-const currentTerm = ref('Term 1');
-const academicYear = ref(new Date().getFullYear());
-const term = ref('Term 1');          // roster is computed "up to and including" this term
-const activities = ref([]);          // [{activity_name, category, amount}]
-const selectedActivity = ref('');
-const roster = ref(null);            // ActivityRosterResponse
-const message = ref('');
-const loadingRoster = ref(false);
+const ACTIVITY_NAME = 'Transport';
+const authStore = useAuthStore();
 
-// Subscribe-a-student panel
+const academicYear = ref(new Date().getFullYear());
+const term = ref('Term 1');           // arrears computed up to and including this term
+const terms = ["Term 1", "Term 2", "Term 3"];
+
+const feeEntry = ref(null);           // the FeeStructure row for Transport this year, if any
+const feeAmountInput = ref('');
+const savingFee = ref(false);
+
+const roster = ref(null);
+const loadingRoster = ref(false);
+const message = ref('');
+
 const students = ref([]);
 const studentSearch = ref('');
 const subscribeStudentId = ref('');
@@ -20,14 +26,9 @@ const subscribeTerm = ref('Term 1');
 const subscribing = ref(false);
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
-const terms = ["Term 1", "Term 2", "Term 3"];
-
-const selectedActivityInfo = computed(() =>
-    activities.value.find(a => a.activity_name === selectedActivity.value) || null);
 
 const filteredStudents = computed(() => {
     const q = studentSearch.value.trim().toLowerCase();
-    // Exclude students already subscribed (active) to the selected activity
     const subscribedIds = new Set((roster.value?.entries || []).filter(e => e.is_active).map(e => e.student_id));
     let pool = students.value.filter(s => !subscribedIds.has(s.id));
     if (!q) return pool;
@@ -37,61 +38,91 @@ const filteredStudents = computed(() => {
         (s.grade_level || '').toLowerCase().includes(q));
 });
 
+// ── Transport fee (admin/principal set the price; everyone else sees it) ───
+const loadFeeEntry = async () => {
+    try {
+        const res = await api.getFeeStructure();
+        feeEntry.value = res.data.find(r =>
+            r.grade_level === 'General' && r.term === 'Transport' &&
+            r.fee_type === 'Transport' && r.academic_year === parseInt(academicYear.value)) || null;
+        feeAmountInput.value = feeEntry.value ? feeEntry.value.amount : '';
+    } catch (e) { console.error(e); }
+};
+
+const saveFee = async () => {
+    const amount = parseFloat(feeAmountInput.value);
+    if (!(amount >= 0)) return;
+    savingFee.value = true;
+    message.value = '';
+    try {
+        if (feeEntry.value) {
+            await api.updateFeeStructureEntry(feeEntry.value.id, {
+                grade_level: 'General', term: 'Transport', fee_type: 'Transport',
+                amount, academic_year: parseInt(academicYear.value),
+            });
+        } else {
+            await api.createFeeStructureEntry({
+                grade_level: 'General', term: 'Transport', fee_type: 'Transport',
+                amount, academic_year: parseInt(academicYear.value),
+            });
+        }
+        message.value = 'Transport fee saved.';
+        await loadFeeEntry();
+        loadRoster();
+    } catch (e) {
+        message.value = e.response?.data?.detail || 'Failed to save the transport fee.';
+    }
+    savingFee.value = false;
+};
+
+// ── Roster & arrears ─────────────────────────────────────────────────────────
+const loadRoster = async () => {
+    if (!feeEntry.value) { roster.value = null; return; }
+    loadingRoster.value = true;
+    message.value = '';
+    try {
+        const res = await api.getActivityRoster(ACTIVITY_NAME, term.value, academicYear.value);
+        roster.value = res.data;
+    } catch (e) {
+        console.error(e);
+        roster.value = null;
+        message.value = e.response?.data?.detail || 'Failed to load the transport roster.';
+    }
+    loadingRoster.value = false;
+};
+
+watch(term, loadRoster);
+
 const load = async () => {
     try {
         const termRes = await api.getCurrentTerm();
-        currentTerm.value = termRes.data.term;
         term.value = termRes.data.term;
         subscribeTerm.value = termRes.data.term;
         academicYear.value = termRes.data.academic_year;
     } catch (e) { console.error(e); }
     try {
-        // Transport has its own dedicated dashboard (Finance → Transport) —
-        // only co-curricular items are managed here.
-        const res = await api.getActivities(academicYear.value, 'Optional');
-        activities.value = res.data;
-        if (!selectedActivity.value && activities.value.length) {
-            selectedActivity.value = activities.value[0].activity_name;
-        }
-    } catch (e) { console.error(e); }
-    try {
         const res = await api.getStudents();
         students.value = res.data;
     } catch (e) { console.error(e); }
+    await loadFeeEntry();
     loadRoster();
 };
 
-const loadRoster = async () => {
-    if (!selectedActivity.value) { roster.value = null; return; }
-    loadingRoster.value = true;
-    message.value = '';
-    try {
-        const res = await api.getActivityRoster(selectedActivity.value, term.value, academicYear.value);
-        roster.value = res.data;
-    } catch (e) {
-        console.error(e);
-        roster.value = null;
-        message.value = e.response?.data?.detail || 'Failed to load roster.';
-    }
-    loadingRoster.value = false;
-};
-
-watch([selectedActivity, term], loadRoster);
-
+// ── Subscriptions ────────────────────────────────────────────────────────────
 const subscribe = async () => {
-    if (!subscribeStudentId.value || !selectedActivity.value) return;
+    if (!subscribeStudentId.value) return;
     subscribing.value = true;
     message.value = '';
     try {
         await api.subscribeToActivity({
             student_id: parseInt(subscribeStudentId.value),
-            activity_name: selectedActivity.value,
+            activity_name: ACTIVITY_NAME,
             academic_year: parseInt(academicYear.value),
             enrolled_term: subscribeTerm.value,
         });
         subscribeStudentId.value = '';
         studentSearch.value = '';
-        message.value = 'Student subscribed.';
+        message.value = 'Student subscribed to transport.';
         loadRoster();
     } catch (e) {
         message.value = e.response?.data?.detail || 'Failed to subscribe student.';
@@ -100,7 +131,7 @@ const subscribe = async () => {
 };
 
 const unsubscribe = async (entry) => {
-    if (!window.confirm(`Unsubscribe ${entry.student_name} from ${selectedActivity.value}? Any arrears already owed stay on record.`)) return;
+    if (!window.confirm(`Take ${entry.student_name} off school transport? Any arrears already owed stay on record.`)) return;
     try {
         await api.unsubscribeFromActivity(entry.enrollment_id);
         loadRoster();
@@ -109,9 +140,9 @@ const unsubscribe = async (entry) => {
     }
 };
 
-// Per-row payment entry
-const payAmount = ref({});   // enrollment_id -> amount string
-const paying = ref({});      // enrollment_id -> bool
+// ── Payments ─────────────────────────────────────────────────────────────────
+const payAmount = ref({});
+const paying = ref({});
 const receipt = ref(null);
 
 const pay = async (entry) => {
@@ -122,7 +153,7 @@ const pay = async (entry) => {
     try {
         const res = await api.recordActivityPayment({
             student_id: entry.student_id,
-            activity_name: selectedActivity.value,
+            activity_name: ACTIVITY_NAME,
             amount,
             term: term.value,
             academic_year: parseInt(academicYear.value),
@@ -148,42 +179,43 @@ onMounted(load);
   <div class="p-8 max-w-7xl mx-auto space-y-8">
     <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-navy">Co-curricular Activities</h1>
-            <p class="text-sm text-gray-500">Subscriptions and arrears for co-curricular activities. For school transport, see Finance → Transport.</p>
+            <h1 class="text-3xl font-bold text-navy">Transport</h1>
+            <p class="text-sm text-gray-500">Subscriptions, payments and arrears for students who use school transport</p>
         </div>
         <span class="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">{{ academicYear }}</span>
     </div>
 
     <p v-if="message" class="text-sm font-medium" :class="message.includes('Failed') ? 'text-red-accent' : 'text-green-600'">{{ message }}</p>
 
-    <!-- Activity + term selector -->
+    <!-- Transport fee -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Transport Fee — {{ academicYear }}</h2>
+        <div v-if="authStore.isAdmin" class="flex gap-4 items-end">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Activity</label>
-                <select v-model="selectedActivity" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
-                    <option value="" disabled>Select an activity</option>
-                    <option v-for="a in activities" :key="a.activity_name" :value="a.activity_name">
-                        {{ a.activity_name }} ({{ a.category }} · {{ money(a.amount) }}/term)
-                    </option>
-                </select>
-                <p v-if="activities.length === 0" class="text-xs text-gray-400 mt-1">
-                    No priced co-curricular items yet — add them on the Fee Structure page.
-                </p>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Amount per term (KES)</label>
+                <input v-model="feeAmountInput" type="number" min="0" step="0.01"
+                       class="border border-gray-300 p-2 rounded-md w-48 focus:ring-navy focus:border-navy" />
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Arrears up to term</label>
-                <select v-model="term" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
-                    <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
-                </select>
-            </div>
-            <div v-if="selectedActivityInfo" class="text-sm text-gray-600">
-                <span class="font-semibold text-navy">{{ money(selectedActivityInfo.amount) }}</span> per term per subscriber
-            </div>
+            <button @click="saveFee" :disabled="savingFee || feeAmountInput === ''" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">
+                {{ savingFee ? 'Saving…' : (feeEntry ? 'Update Fee' : 'Set Fee') }}
+            </button>
+            <p v-if="!feeEntry" class="text-xs text-gray-400">No transport fee configured yet for {{ academicYear }} — set one to start subscribing students.</p>
+        </div>
+        <div v-else>
+            <p v-if="feeEntry" class="text-2xl font-bold text-navy">{{ money(feeEntry.amount) }} <span class="text-sm font-normal text-gray-500">per term</span></p>
+            <p v-else class="text-sm text-gray-500 italic">No transport fee has been configured yet for {{ academicYear }} — ask an admin or the principal to set one.</p>
         </div>
     </div>
 
-    <template v-if="selectedActivity">
+    <template v-if="feeEntry">
+      <!-- Term selector -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Arrears up to term</label>
+          <select v-model="term" class="border border-gray-300 p-2 rounded-md w-full md:w-64 bg-white focus:ring-navy focus:border-navy">
+              <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
+          </select>
+      </div>
+
       <!-- Subscribe a student -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Subscribe a Student</h2>
@@ -215,7 +247,7 @@ onMounted(load);
 
       <!-- Roster & arrears -->
       <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-          <h2 class="text-xl font-bold text-navy p-6 pb-3">{{ selectedActivity }} — Subscribers & Arrears</h2>
+          <h2 class="text-xl font-bold text-navy p-6 pb-3">Subscribers & Arrears</h2>
           <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                   <tr>
@@ -255,7 +287,7 @@ onMounted(load);
                       </td>
                   </tr>
                   <tr v-if="!loadingRoster && (!roster || roster.entries.length === 0)">
-                      <td colspan="8" class="px-6 py-8 text-center text-gray-500 text-sm">No students subscribed to {{ selectedActivity }} yet.</td>
+                      <td colspan="8" class="px-6 py-8 text-center text-gray-500 text-sm">No students subscribed to transport yet.</td>
                   </tr>
                   <tr v-if="loadingRoster">
                       <td colspan="8" class="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td>

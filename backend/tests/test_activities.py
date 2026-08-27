@@ -142,6 +142,25 @@ def test_cannot_double_subscribe_active_enrollment(as_admin, db_session, sample_
     assert r.status_code == 400
 
 
+def test_list_activities_filters_by_category(as_admin, db_session):
+    year = datetime.now().year
+    _add_activity_fee(db_session, "Transport", "Transport", 1500, year)
+    _add_activity_fee(db_session, "Swimming", "Optional", 2000, year)
+
+    r = as_admin.get("/api/activities/", params={"year": year, "category": "Transport"})
+    assert r.status_code == 200
+    names = [a["activity_name"] for a in r.json()]
+    assert names == ["Transport"]
+
+    r = as_admin.get("/api/activities/", params={"year": year, "category": "Optional"})
+    names = [a["activity_name"] for a in r.json()]
+    assert names == ["Swimming"]
+
+    r = as_admin.get("/api/activities/", params={"year": year})
+    names = [a["activity_name"] for a in r.json()]
+    assert sorted(names) == ["Swimming", "Transport"]
+
+
 def test_secretary_can_manage_activities(as_secretary, db_session, sample_student):
     year = datetime.now().year
     _add_activity_fee(db_session, "Transport", "Transport", 1500, year)
