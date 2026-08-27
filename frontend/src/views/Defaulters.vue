@@ -136,63 +136,63 @@ onMounted(async () => {
          would print a blank page. -->
     <div class="hidden">
       <div ref="invoiceRoot">
-        <div v-for="d in invoiceTargets" :key="d.student_id" class="arrears-card p-8">
-            <div class="text-center border-b-2 border-navy pb-4 mb-6">
-                <div class="flex justify-center mb-2">
-                    <SchoolBadge :size="80" />
+        <div v-for="d in invoiceTargets" :key="d.student_id" class="arrears-card p-5 text-sm">
+            <div class="text-center border-b-2 border-navy pb-2 mb-3">
+                <div class="flex justify-center mb-1">
+                    <SchoolBadge :size="48" />
                 </div>
-                <h2 class="text-2xl font-extrabold text-navy">THE BONA SCHOOL</h2>
-                <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">In Truth We Excel</p>
-                <p class="text-sm uppercase tracking-widest text-red-accent font-bold mt-1">Fee Arrears Invoice</p>
+                <h2 class="text-lg font-extrabold text-navy leading-tight">THE BONA SCHOOL</h2>
+                <p class="text-[10px] font-semibold uppercase tracking-widest text-gray-500">In Truth We Excel</p>
+                <p class="text-xs uppercase tracking-widest text-red-accent font-bold mt-0.5">Fee Arrears Invoice</p>
             </div>
 
-            <div class="flex justify-between text-sm mb-6">
+            <div class="flex justify-between text-xs mb-3">
                 <div>
                     <p class="text-gray-500">Student</p>
-                    <p class="font-bold text-navy text-lg">{{ d.student_name }}</p>
+                    <p class="font-bold text-navy text-sm">{{ d.student_name }}</p>
                     <p class="text-gray-500">{{ d.admission_number }} · {{ d.grade_level }}</p>
                 </div>
                 <div class="text-right">
                     <p class="text-gray-500">Date Issued</p>
                     <p class="font-semibold text-gray-900">{{ today() }}</p>
-                    <p class="text-gray-500 mt-1">As at</p>
+                    <p class="text-gray-500 mt-0.5">As at</p>
                     <p class="font-semibold text-gray-900">{{ term }} {{ academicYear }}</p>
                 </div>
             </div>
 
-            <table class="min-w-full divide-y divide-gray-200 mb-4">
+            <table class="min-w-full divide-y divide-gray-200 mb-2 text-xs">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Term</th>
-                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
-                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
-                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Arrears</th>
+                        <th class="px-2 py-1 text-left font-medium text-gray-500 uppercase tracking-wider">Term</th>
+                        <th class="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                        <th class="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                        <th class="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Arrears</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                     <tr v-for="row in d.term_breakdown" :key="row.term">
-                        <td class="px-4 py-2 text-sm font-medium text-navy">{{ row.term }}</td>
-                        <td class="px-4 py-2 text-sm text-right text-gray-500">{{ money(row.expected + (row.carry_forward || 0)) }}</td>
-                        <td class="px-4 py-2 text-sm text-right text-gray-500">{{ money(row.paid) }}</td>
-                        <td class="px-4 py-2 text-sm text-right font-bold text-red-accent">{{ money(row.outstanding) }}</td>
+                        <td class="px-2 py-1 font-medium text-navy">{{ row.term }}</td>
+                        <td class="px-2 py-1 text-right text-gray-500">{{ money(row.expected + (row.carry_forward || 0)) }}</td>
+                        <td class="px-2 py-1 text-right text-gray-500">{{ money(row.paid) }}</td>
+                        <td class="px-2 py-1 text-right font-bold text-red-accent">{{ money(row.outstanding) }}</td>
                     </tr>
                     <tr v-if="!d.term_breakdown || d.term_breakdown.length === 0">
-                        <td colspan="4" class="px-4 py-3 text-center text-gray-500 text-sm">{{ money(d.outstanding_balance) }} outstanding for {{ term }}.</td>
+                        <td colspan="4" class="px-2 py-2 text-center text-gray-500">{{ money(d.outstanding_balance) }} outstanding for {{ term }}.</td>
                     </tr>
                 </tbody>
             </table>
 
-            <div class="flex justify-between items-center border-t-2 border-b-2 border-navy py-3 mb-6">
-                <span class="font-bold text-navy uppercase text-sm">Total Arrears</span>
-                <span class="text-2xl font-extrabold text-red-accent">{{ money(d.total_arrears ?? d.outstanding_balance) }}</span>
+            <div class="flex justify-between items-center border-t-2 border-b-2 border-navy py-1.5 mb-3">
+                <span class="font-bold text-navy uppercase text-xs">Total Arrears</span>
+                <span class="text-lg font-extrabold text-red-accent">{{ money(d.total_arrears ?? d.outstanding_balance) }}</span>
             </div>
 
-            <p class="text-sm text-gray-600 leading-relaxed">
+            <p class="text-xs text-gray-600 leading-snug">
                 Dear Parent/Guardian, the above balance remains outstanding on {{ d.student_name }}'s school fees
                 account. Kindly clear this arrears at your earliest convenience. For any queries, please contact
                 the school's finance office.
             </p>
-            <p class="text-xs text-gray-400 mt-6 border-t pt-3">This is a computer-generated invoice — The Bona School Finance Office.</p>
+            <p class="text-[10px] text-gray-400 mt-2 border-t pt-1.5">This is a computer-generated invoice — The Bona School Finance Office.</p>
         </div>
       </div>
     </div>

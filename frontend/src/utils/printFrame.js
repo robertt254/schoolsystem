@@ -44,8 +44,14 @@ export function printElement(element, title = 'Print') {
   doc.open();
   doc.write(`<!doctype html><html><head><title>${title}</title>${styles}
     <style>
-      @page { margin: 12mm; }
+      @page { margin: 10mm; }
       html, body { margin: 0; background: #fff; }
+      /* Tailwind's spacing/font-size utilities are rem-based, sized off the
+         root font-size — shrinking it here scales every printed document
+         (fonts, padding, gaps) down proportionally in one place, with zero
+         effect on the live app's own (unrelated) root font-size. On-screen
+         sizing was designed for a monitor, not a sheet of paper. */
+      html { font-size: 13px; }
     </style>
   </head><body>${element.outerHTML}</body></html>`);
   doc.close();
