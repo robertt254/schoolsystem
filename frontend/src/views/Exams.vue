@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import api from '../api';
 import { gradeLabel, EXAM_TYPES, examTypeLabel } from '../utils/grading';
+import { wasEnrolledForTerm } from '../utils/enrollment';
 import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
@@ -59,19 +60,29 @@ const loadEntrySheet = async () => {
                 if (score) existing[row.student_id] = score.marks;
             }
         }
-        entryRows.value = studentsRes.data.map(s => ({
-            student_id: s.id,
-            student_name: `${s.first_name} ${s.last_name}`,
-            admission_number: s.admission_number,
-            marks: existing[s.id] ?? null
-        }));
+        // A mid-year joiner has nothing to enter for a term before they were
+        // admitted — leave them off the entry sheet entirely rather than
+        // showing a row with nowhere to record a real mark.
+        const year = parseInt(filters.value.academic_year);
+        entryRows.value = studentsRes.data
+            .filter(s => wasEnrolledForTerm(s, filters.value.term, year))
+            .map(s => ({
+                student_id: s.id,
+                student_name: `${s.first_name} ${s.last_name}`,
+                admission_number: s.admission_number,
+                marks: existing[s.id] ?? null
+            }));
     } catch (e) { console.error(e); }
 };
 
 const loadResults = async () => {
     try {
+        // Results are stored separately per exam type and must be viewed
+        // that way too — the merit list is always scoped to exactly one
+        // exam (Opener / Mid Term / End Term), never a blend of all three.
         const res = await api.getGradeExamResults(
-            filters.value.grade, filters.value.term, filters.value.academic_year, null
+            filters.value.grade, filters.value.term,
+            filters.value.academic_year, filters.value.exam_type
         );
         resultsView.value = res.data;
     } catch (e) { console.error(e); }
@@ -96,6 +107,9 @@ const saveMarks = async () => {
             }))
         });
         message.value = `Saved ${res.data.saved} result(s) for ${filters.value.subject} (${examTypeLabel(filters.value.exam_type)}).`;
+        if (res.data.skipped_ineligible) {
+            message.value += ` ${res.data.skipped_ineligible} skipped — not yet enrolled for ${filters.value.term}.`;
+        }
         loadResults();
     } catch (e) {
         console.error(e);
@@ -142,7 +156,7 @@ onMounted(async () => {
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Exam</label>
-                <select v-model="filters.exam_type" @change="loadEntrySheet" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                <select v-model="filters.exam_type" @change="loadEntrySheet(); loadResults()" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option v-for="e in examTypes" :key="e" :value="e">{{ examTypeLabel(e) }}</option>
                 </select>
             </div>
@@ -205,7 +219,7 @@ onMounted(async () => {
 
     <!-- Results / merit list -->
     <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden" v-if="resultsView">
-        <h2 class="text-xl font-bold text-navy p-6 pb-3">{{ filters.grade }} · {{ filters.term }} Merit List</h2>
+        <h2 class="text-xl font-bold text-navy p-6 pb-3">{{ filters.grade }} · {{ filters.term }} · {{ examTypeLabel(filters.exam_type) }} Merit List</h2>
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">

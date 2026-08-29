@@ -143,7 +143,13 @@ export default {
   },
   getGradeExamResults(grade, term, academicYear, examType) {
     return api.get(`/api/exams/grade/${encodeURIComponent(grade)}/${encodeURIComponent(term)}`,
-      { params: { academic_year: academicYear, ...(examType ? { exam_type: examType } : {}) } });
+      { params: { academic_year: academicYear, exam_type: examType } });
+  },
+  // Every exam type at once, per student (not collapsed to a single ranked
+  // list) — for whole-class report card printing.
+  getGradeExamResultsDetailed(grade, term, academicYear) {
+    return api.get(`/api/exams/grade/${encodeURIComponent(grade)}/${encodeURIComponent(term)}/detailed`,
+      { params: { academic_year: academicYear } });
   },
   getStudentExamResults(studentId) {
     return api.get(`/api/exams/student/${studentId}`);

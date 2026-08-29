@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../api';
 import SchoolBadge from '../components/SchoolBadge.vue';
-import { gradeLabel, examTypeLabel } from '../utils/grading';
+import { gradeLabel, examTypeLabel, EXAM_TYPES } from '../utils/grading';
 import { useAuthStore } from '../stores/auth';
 import { printElement } from '../utils/printFrame';
 
@@ -62,14 +62,16 @@ const generateClass = async () => {
     try {
         const [scoresRes, examsRes] = await Promise.all([
             api.getGradeAssessments(classGrade.value, selectedTerm.value, academicYear.value),
-            api.getGradeExamResults(classGrade.value, selectedTerm.value, academicYear.value, null).catch(() => null)
+            // Detailed, not the ranked merit-list endpoint: a report card
+            // should show a student's Opener/Mid Term/End Term marks
+            // separately, not collapsed into a single exam.
+            api.getGradeExamResultsDetailed(classGrade.value, selectedTerm.value, academicYear.value).catch(() => null)
         ]);
         const examsByStudent = {};
         if (examsRes) {
             for (const row of examsRes.data.students) {
-                examsByStudent[row.student_id] = examsRes.data.subjects
-                    .filter(sub => row.scores[sub])
-                    .map(sub => ({ subject: sub, marks: row.scores[sub].marks, max_marks: row.scores[sub].max_marks || 100 }));
+                examsByStudent[row.student_id] = [...row.results].sort((a, b) =>
+                    a.subject.localeCompare(b.subject) || EXAM_TYPES.indexOf(a.exam_type) - EXAM_TYPES.indexOf(b.exam_type));
             }
         }
         classCards.value = scoresRes.data.map(s => ({
@@ -212,13 +214,15 @@ onMounted(async () => {
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exam</th>
                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Marks</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Evaluation</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                    <tr v-for="e in card.exams" :key="e.subject">
+                    <tr v-for="(e, i) in card.exams" :key="`${e.subject}-${e.exam_type}-${i}`">
                         <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ e.subject }}</td>
+                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ examTypeLabel(e.exam_type) }}</td>
                         <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ e.marks }}/{{ e.max_marks }}</td>
                         <td class="px-6 py-3 whitespace-nowrap">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
@@ -228,7 +232,7 @@ onMounted(async () => {
                         </td>
                     </tr>
                     <tr v-if="card.exams.length === 0">
-                        <td colspan="3" class="px-6 py-4 text-center text-gray-500 text-sm">No exam results for this term.</td>
+                        <td colspan="4" class="px-6 py-4 text-center text-gray-500 text-sm">No exam results for this term.</td>
                     </tr>
                 </tbody>
             </table>
