@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../api';
 import SchoolBadge from '../components/SchoolBadge.vue';
@@ -11,14 +11,27 @@ const authStore = useAuthStore();
 
 const route = useRoute();
 const students = ref([]);
+const studentSearch = ref('');
 const selectedStudent = ref('');
 const selectedTerm = ref('Term 1');
+const examType = ref('Opener');
 const academicYear = ref(String(new Date().getFullYear()));
 const report = ref(null);
 const examResults = ref([]);
 const terms = ["Term 1", "Term 2", "Term 3"];
 
 const SCORE_LABELS = { EE: 'Exceeding', ME: 'Meeting', AE: 'Approaching', BE: 'Below' };
+
+// Type-ahead so a report card can be pulled up quickly by name, admission
+// number or class instead of scrolling a long dropdown.
+const filteredStudents = computed(() => {
+    const q = studentSearch.value.trim().toLowerCase();
+    if (!q) return students.value;
+    return students.value.filter(s =>
+        `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) ||
+        (s.admission_number || '').toLowerCase().includes(q) ||
+        (s.grade_level || '').toLowerCase().includes(q));
+});
 
 const loadStudents = async () => {
     try {
@@ -37,8 +50,13 @@ const generate = async () => {
         report.value = res.data;
     } catch (e) { console.error(e); }
     try {
+        // Report cards are generated per exam — Opener, Mid Term and End
+        // Term are kept and shown separately, never blended together.
         const res = await api.getStudentExamResults(selectedStudent.value);
-        examResults.value = res.data.filter(r => r.term === selectedTerm.value && String(r.academic_year) === String(academicYear.value));
+        examResults.value = res.data.filter(r =>
+            r.term === selectedTerm.value &&
+            r.exam_type === examType.value &&
+            String(r.academic_year) === String(academicYear.value));
     } catch (e) { console.error(e); }
 };
 
@@ -60,18 +78,17 @@ const generateClass = async () => {
     report.value = null;   // only one print target at a time
     classCards.value = [];
     try {
+        // Report cards are generated per exam, same as the merit list —
+        // this always asks for exactly one exam type, never a blend.
         const [scoresRes, examsRes] = await Promise.all([
             api.getGradeAssessments(classGrade.value, selectedTerm.value, academicYear.value),
-            // Detailed, not the ranked merit-list endpoint: a report card
-            // should show a student's Opener/Mid Term/End Term marks
-            // separately, not collapsed into a single exam.
-            api.getGradeExamResultsDetailed(classGrade.value, selectedTerm.value, academicYear.value).catch(() => null)
+            api.getGradeExamResults(classGrade.value, selectedTerm.value, academicYear.value, examType.value).catch(() => null)
         ]);
         const examsByStudent = {};
         if (examsRes) {
             for (const row of examsRes.data.students) {
-                examsByStudent[row.student_id] = [...row.results].sort((a, b) =>
-                    a.subject.localeCompare(b.subject) || EXAM_TYPES.indexOf(a.exam_type) - EXAM_TYPES.indexOf(b.exam_type));
+                examsByStudent[row.student_id] = Object.entries(row.scores)
+                    .map(([subject, v]) => ({ subject, marks: v.marks, max_marks: v.max_marks || 100 }));
             }
         }
         classCards.value = scoresRes.data.map(s => ({
@@ -108,18 +125,31 @@ onMounted(async () => {
 
     <!-- Selector -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Student</label>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end mb-4">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                <input v-model="studentSearch" type="text" placeholder="Name, admission no. or class…"
+                       class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+            </div>
+            <div class="md:col-span-3">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Student ({{ filteredStudents.length }} match{{ filteredStudents.length === 1 ? '' : 'es' }})</label>
                 <select v-model="selectedStudent" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option value="">Select student</option>
-                    <option v-for="s in students" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
+                    <option v-for="s in filteredStudents" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }} · {{ s.grade_level }})</option>
                 </select>
             </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Term</label>
                 <select v-model="selectedTerm" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Exam</label>
+                <select v-model="examType" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option v-for="e in EXAM_TYPES" :key="e" :value="e">{{ examTypeLabel(e) }}</option>
                 </select>
             </div>
             <div>
@@ -134,7 +164,7 @@ onMounted(async () => {
          restricts to admin/principal/teachers -->
     <div v-if="authStore.canAcademics" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Print Whole Class</h2>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Class</label>
                 <select v-model="classGrade" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
@@ -145,6 +175,12 @@ onMounted(async () => {
                 <label class="block text-sm font-medium text-gray-700 mb-1">Term</label>
                 <select v-model="selectedTerm" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
                     <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Exam</label>
+                <select v-model="examType" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option v-for="e in EXAM_TYPES" :key="e" :value="e">{{ examTypeLabel(e) }}</option>
                 </select>
             </div>
             <div>
@@ -209,20 +245,18 @@ onMounted(async () => {
                 </tbody>
             </table>
 
-            <h3 class="text-lg font-bold text-navy mb-2">Exam Results — {{ selectedTerm }}</h3>
+            <h3 class="text-lg font-bold text-navy mb-2">{{ examTypeLabel(examType) }} Exam Results — {{ selectedTerm }}</h3>
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exam</th>
                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Marks</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Evaluation</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                    <tr v-for="(e, i) in card.exams" :key="`${e.subject}-${e.exam_type}-${i}`">
+                    <tr v-for="e in card.exams" :key="e.subject">
                         <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ e.subject }}</td>
-                        <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ examTypeLabel(e.exam_type) }}</td>
                         <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ e.marks }}/{{ e.max_marks }}</td>
                         <td class="px-6 py-3 whitespace-nowrap">
                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
@@ -232,7 +266,7 @@ onMounted(async () => {
                         </td>
                     </tr>
                     <tr v-if="card.exams.length === 0">
-                        <td colspan="4" class="px-6 py-4 text-center text-gray-500 text-sm">No exam results for this term.</td>
+                        <td colspan="3" class="px-6 py-4 text-center text-gray-500 text-sm">No exam results for this term.</td>
                     </tr>
                 </tbody>
             </table>
@@ -287,12 +321,11 @@ onMounted(async () => {
             </tbody>
         </table>
 
-        <h3 class="text-lg font-bold text-navy mb-2">Exam Results — {{ selectedTerm }}</h3>
+        <h3 class="text-lg font-bold text-navy mb-2">{{ examTypeLabel(examType) }} Exam Results — {{ selectedTerm }}</h3>
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exam</th>
                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Marks</th>
                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">%</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Evaluation</th>
@@ -301,7 +334,6 @@ onMounted(async () => {
             <tbody class="bg-white divide-y divide-gray-200">
                 <tr v-for="r in examResults" :key="r.id">
                     <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ r.subject }}</td>
-                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ examTypeLabel(r.exam_type) }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ r.marks }}/{{ r.max_marks }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-500">{{ Math.round(r.marks / r.max_marks * 100) }}%</td>
                     <td class="px-6 py-3 whitespace-nowrap">
@@ -312,7 +344,7 @@ onMounted(async () => {
                     </td>
                 </tr>
                 <tr v-if="examResults.length === 0">
-                    <td colspan="5" class="px-6 py-6 text-center text-gray-500 text-sm">No exam results for this term.</td>
+                    <td colspan="4" class="px-6 py-6 text-center text-gray-500 text-sm">No exam results for this term.</td>
                 </tr>
             </tbody>
         </table>

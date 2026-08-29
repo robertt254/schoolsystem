@@ -36,20 +36,6 @@ def test_different_exam_types_do_not_clobber_each_other(as_admin, sample_student
     assert midterm["students"][0]["scores"]["Math"]["marks"] == 85.0
 
 
-def test_detailed_endpoint_returns_every_exam_type_per_student(as_admin, sample_student):
-    year = datetime.now().year
-    _record(as_admin, "Grade 1", "Term 1", "Opener", "Math", year,
-            [{"student_id": sample_student.id, "marks": 60, "max_marks": 100}])
-    _record(as_admin, "Grade 1", "Term 1", "EndTerm", "Math", year,
-            [{"student_id": sample_student.id, "marks": 90, "max_marks": 100}])
-
-    r = as_admin.get("/api/exams/grade/Grade 1/Term 1/detailed", params={"academic_year": year})
-    assert r.status_code == 200
-    rows = r.json()["students"][0]["results"]
-    exam_types = sorted(row["exam_type"] for row in rows)
-    assert exam_types == ["EndTerm", "Opener"]
-
-
 def test_midyear_joiner_excluded_from_earlier_term_merit_list(as_admin, db_session):
     year = datetime.now().year
     late_joiner = models.Student(
@@ -74,7 +60,9 @@ def test_midyear_joiner_excluded_from_earlier_term_merit_list(as_admin, db_sessi
     assert late_joiner.id in ids
 
 
-def test_midyear_joiner_excluded_from_entry_sheet_detailed_view(as_admin, db_session):
+def test_midyear_joiner_excluded_from_a_different_exam_types_merit_list(as_admin, db_session):
+    """The eligibility filter is independent of exam_type — a late joiner is
+    excluded from Term 1 regardless of which exam is being viewed."""
     year = datetime.now().year
     late_joiner = models.Student(
         first_name="Late", last_name="Joiner2", admission_number="BNS-0098",
@@ -84,9 +72,11 @@ def test_midyear_joiner_excluded_from_entry_sheet_detailed_view(as_admin, db_ses
     db_session.add(late_joiner)
     db_session.commit()
 
-    r = as_admin.get("/api/exams/grade/Grade 1/Term 1/detailed", params={"academic_year": year})
-    ids = [s["student_id"] for s in r.json()["students"]]
-    assert late_joiner.id not in ids
+    for exam_type in ["Opener", "MidTerm", "EndTerm"]:
+        r = as_admin.get("/api/exams/grade/Grade 1/Term 1",
+                          params={"academic_year": year, "exam_type": exam_type})
+        ids = [s["student_id"] for s in r.json()["students"]]
+        assert late_joiner.id not in ids
 
 
 def test_bulk_save_skips_marks_for_a_term_before_admission(as_admin, db_session):

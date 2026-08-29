@@ -155,13 +155,6 @@ describe('academics & exams', () => {
     );
   });
 
-  it('getGradeExamResultsDetailed hits the detailed (all-exam-types) endpoint', () => {
-    api.getGradeExamResultsDetailed('Grade 2', 'Term 1', 2026);
-    expect(mocks.instance.get).toHaveBeenCalledWith(
-      '/api/exams/grade/Grade%202/Term%201/detailed',
-      { params: { academic_year: 2026 } },
-    );
-  });
 });
 
 describe('fees & finance', () => {

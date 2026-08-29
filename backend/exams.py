@@ -160,57 +160,6 @@ def get_grade_results(
     return {"subjects": subjects, "students": rows}
 
 
-@router.get("/grade/{grade_level}/{term}/detailed")
-def get_grade_results_detailed(
-    grade_level: str,
-    term: str,
-    academic_year: int = Query(...),
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-):
-    """Every exam-type result for every eligible student in a grade/term, as a
-    flat per-student list — unlike get_grade_results (a ranked merit list,
-    always scoped to exactly one exam type), this is for whole-class report
-    card printing, where a student's Opener/Mid Term/End Term marks should
-    all show, not be collapsed into one exam."""
-    if current_user.role not in {"admin", "principal", "senior_teacher", "teacher"}:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    students = db.query(models.Student).filter(
-        models.Student.grade_level == grade_level,
-        models.Student.is_deleted == False,
-        models.Student.status == "Active",
-    ).order_by(models.Student.last_name, models.Student.first_name).all()
-    students = [s for s in students if _was_enrolled_for_term(s, term, academic_year)]
-
-    results = db.query(models.ExamResult).filter(
-        models.ExamResult.grade_level == grade_level,
-        models.ExamResult.term == term,
-        models.ExamResult.academic_year == academic_year,
-    ).all()
-
-    by_student: dict = {}
-    for r in results:
-        by_student.setdefault(r.student_id, []).append({
-            "subject": r.subject,
-            "exam_type": r.exam_type,
-            "marks": float(r.marks),
-            "max_marks": r.max_marks,
-        })
-
-    return {
-        "students": [
-            {
-                "student_id": s.id,
-                "student_name": f"{s.first_name} {s.last_name}",
-                "admission_number": s.admission_number,
-                "results": by_student.get(s.id, []),
-            }
-            for s in students
-        ]
-    }
-
-
 @router.get("/student/{student_id}")
 def get_student_results(
     student_id: int,

@@ -4,6 +4,8 @@ import api from '../api';
 import { gradeLabel, EXAM_TYPES, examTypeLabel } from '../utils/grading';
 import { wasEnrolledForTerm } from '../utils/enrollment';
 import { useAuthStore } from '../stores/auth';
+import { printElement } from '../utils/printFrame';
+import SchoolBadge from '../components/SchoolBadge.vue';
 
 const authStore = useAuthStore();
 
@@ -118,6 +120,12 @@ const saveMarks = async () => {
     saving.value = false;
 };
 
+const meritListRoot = ref(null);
+const printMeritList = () => printElement(
+    meritListRoot.value,
+    `${filters.value.grade} — ${examTypeLabel(filters.value.exam_type)} Merit List`
+);
+
 const onGradeChange = async () => {
     filters.value.subject = '';
     await loadSubjects();   // sets the default subject before prefilling marks
@@ -218,8 +226,24 @@ onMounted(async () => {
     </div>
 
     <!-- Results / merit list -->
-    <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden" v-if="resultsView">
-        <h2 class="text-xl font-bold text-navy p-6 pb-3">{{ filters.grade }} · {{ filters.term }} · {{ examTypeLabel(filters.exam_type) }} Merit List</h2>
+    <div v-if="resultsView" class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+        <div class="flex justify-between items-center p-6 pb-3">
+            <h2 class="text-xl font-bold text-navy">{{ filters.grade }} · {{ filters.term }} · {{ examTypeLabel(filters.exam_type) }} Merit List</h2>
+            <button @click="printMeritList" class="no-print bg-navy text-white px-4 py-2 rounded-md hover:bg-navy-light text-sm">Print Merit List</button>
+        </div>
+        <div ref="meritListRoot" class="print-area">
+        <!-- Print-only letterhead -->
+        <div class="hidden print:block text-center border-b-2 border-navy pb-4 mb-4 px-6">
+            <div class="flex justify-center mb-2">
+                <SchoolBadge :size="80" />
+            </div>
+            <h2 class="text-2xl font-extrabold text-navy">THE BONA SCHOOL</h2>
+            <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">In Truth We Excel</p>
+            <p class="text-xs uppercase tracking-widest text-gray-500 mt-1">Official Merit List</p>
+            <p class="text-sm text-gray-600 mt-2">
+                {{ filters.grade }} · {{ filters.term }} · {{ examTypeLabel(filters.exam_type) }} · {{ filters.academic_year }}
+            </p>
+        </div>
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
@@ -259,6 +283,7 @@ onMounted(async () => {
                     </tr>
                 </tbody>
             </table>
+        </div>
         </div>
     </div>
   </div>
