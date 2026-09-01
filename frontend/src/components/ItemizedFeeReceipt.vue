@@ -212,52 +212,60 @@ const submit = async () => {
                 </span>
             </p>
 
-            <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1">Being Payment Of</p>
-            <table class="min-w-full divide-y divide-gray-200 mb-2">
-                <tbody class="divide-y divide-gray-100">
-                    <tr v-for="l in lines.filter(l => l.kind !== 'activity' || l.key === 'bus')" :key="l.key">
-                        <td class="py-1.5 pr-4 text-sm text-gray-700 w-1/3">
-                            {{ l.label }}
-                            <span v-if="l.kind === 'activity' && !l.subscribed" class="block text-xs text-gray-400">Not subscribed — use the Transport page</span>
-                            <span v-else-if="l.outstanding !== null && l.outstanding !== undefined" class="block text-xs" :class="l.outstanding > 0 ? 'text-red-accent' : 'text-green-600'">
-                                {{ l.outstanding > 0 ? `${money(l.outstanding)} owing` : 'Fully settled' }}
-                            </span>
-                            <span v-else-if="l.priceHint" class="block text-xs text-gray-400">Usual: {{ money(l.priceHint) }}</span>
-                        </td>
-                        <td class="py-1.5">
-                            <input v-model="l.amount" type="number" min="0" step="0.01"
-                                   :disabled="l.kind === 'activity' && !l.subscribed"
-                                   placeholder="Shs."
-                                   class="border border-gray-300 p-1.5 rounded-md w-32 text-sm text-right focus:ring-navy focus:border-navy disabled:bg-gray-bg disabled:text-gray-300" />
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                <!-- Activity Fees — on the left; the list runs long, so it sits
+                     beside "Being Payment Of" rather than stacked below it. -->
+                <div class="order-2 md:order-1">
+                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1">Activity Fees</p>
+                    <table class="min-w-full divide-y divide-gray-200 mb-4">
+                        <tbody class="divide-y divide-gray-100">
+                            <tr v-for="l in lines.filter(l => l.kind === 'activity' && l.key !== 'bus')" :key="l.key">
+                                <td class="py-1.5 pr-4 text-sm text-gray-700 w-1/2">
+                                    {{ l.label }}
+                                    <span v-if="l.compulsory" class="ml-1 px-1.5 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">Compulsory</span>
+                                    <span v-if="!l.subscribed" class="block text-xs text-gray-400">Not subscribed — use the Activities page</span>
+                                    <span v-else-if="l.outstanding !== null" class="block text-xs" :class="l.outstanding > 0 ? 'text-red-accent' : 'text-green-600'">
+                                        {{ l.outstanding > 0 ? `${money(l.outstanding)} owing` : 'Fully settled' }}
+                                    </span>
+                                </td>
+                                <td class="py-1.5">
+                                    <input v-model="l.amount" type="number" min="0" step="0.01"
+                                           :disabled="!l.subscribed"
+                                           placeholder="Shs."
+                                           class="border border-gray-300 p-1.5 rounded-md w-32 text-sm text-right focus:ring-navy focus:border-navy disabled:bg-gray-bg disabled:text-gray-300" />
+                                </td>
+                            </tr>
+                            <tr v-if="lines.filter(l => l.kind === 'activity' && l.key !== 'bus').length === 0">
+                                <td class="py-3 text-sm text-gray-400 text-center">No co-curricular activities configured yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
-            <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1">Activity Fees</p>
-            <table class="min-w-full divide-y divide-gray-200 mb-4">
-                <tbody class="divide-y divide-gray-100">
-                    <tr v-for="l in lines.filter(l => l.kind === 'activity' && l.key !== 'bus')" :key="l.key">
-                        <td class="py-1.5 pr-4 text-sm text-gray-700 w-1/3">
-                            {{ l.label }}
-                            <span v-if="l.compulsory" class="ml-1 px-1.5 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">Compulsory</span>
-                            <span v-if="!l.subscribed" class="block text-xs text-gray-400">Not subscribed — use the Activities page</span>
-                            <span v-else-if="l.outstanding !== null" class="block text-xs" :class="l.outstanding > 0 ? 'text-red-accent' : 'text-green-600'">
-                                {{ l.outstanding > 0 ? `${money(l.outstanding)} owing` : 'Fully settled' }}
-                            </span>
-                        </td>
-                        <td class="py-1.5">
-                            <input v-model="l.amount" type="number" min="0" step="0.01"
-                                   :disabled="!l.subscribed"
-                                   placeholder="Shs."
-                                   class="border border-gray-300 p-1.5 rounded-md w-32 text-sm text-right focus:ring-navy focus:border-navy disabled:bg-gray-bg disabled:text-gray-300" />
-                        </td>
-                    </tr>
-                    <tr v-if="lines.filter(l => l.kind === 'activity' && l.key !== 'bus').length === 0">
-                        <td class="py-3 text-sm text-gray-400 text-center">No co-curricular activities configured yet.</td>
-                    </tr>
-                </tbody>
-            </table>
+                <div class="order-1 md:order-2">
+                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-1">Being Payment Of</p>
+                    <table class="min-w-full divide-y divide-gray-200 mb-2">
+                        <tbody class="divide-y divide-gray-100">
+                            <tr v-for="l in lines.filter(l => l.kind !== 'activity' || l.key === 'bus')" :key="l.key">
+                                <td class="py-1.5 pr-4 text-sm text-gray-700 w-1/2">
+                                    {{ l.label }}
+                                    <span v-if="l.kind === 'activity' && !l.subscribed" class="block text-xs text-gray-400">Not subscribed — use the Transport page</span>
+                                    <span v-else-if="l.outstanding !== null && l.outstanding !== undefined" class="block text-xs" :class="l.outstanding > 0 ? 'text-red-accent' : 'text-green-600'">
+                                        {{ l.outstanding > 0 ? `${money(l.outstanding)} owing` : 'Fully settled' }}
+                                    </span>
+                                    <span v-else-if="l.priceHint" class="block text-xs text-gray-400">Usual: {{ money(l.priceHint) }}</span>
+                                </td>
+                                <td class="py-1.5">
+                                    <input v-model="l.amount" type="number" min="0" step="0.01"
+                                           :disabled="l.kind === 'activity' && !l.subscribed"
+                                           placeholder="Shs."
+                                           class="border border-gray-300 p-1.5 rounded-md w-32 text-sm text-right focus:ring-navy focus:border-navy disabled:bg-gray-bg disabled:text-gray-300" />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <div class="flex justify-between items-center border-t-2 border-navy pt-3">
                 <span class="font-bold text-navy">Total: {{ money(total) }}</span>
