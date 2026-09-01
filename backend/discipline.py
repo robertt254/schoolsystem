@@ -36,6 +36,9 @@ def list_records(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    if current_user.role not in WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     q = db.query(models.DisciplinaryRecord)
     if student_id:
         q = q.filter(models.DisciplinaryRecord.student_id == student_id)

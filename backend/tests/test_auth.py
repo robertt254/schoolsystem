@@ -35,6 +35,25 @@ def test_change_password_success(client, test_user, db_session):
     )
     assert new_login_response.status_code == 200
 
+
+def test_change_password_rejects_weak_new_password(client, test_user):
+    """Security audit (2026-09-01): auth.py used to define its own local
+    PasswordChange model with no length requirement, shadowing the properly
+    validated schemas.PasswordChange (min_length=10) that this endpoint
+    never actually used — a user could set a 1-character password."""
+    login_response = client.post(
+        "/api/auth/login",
+        data={"username": "testuser", "password": "old_password"}
+    )
+    token = login_response.json()["access_token"]
+
+    response = client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"current_password": "old_password", "new_password": "short"}
+    )
+    assert response.status_code == 422
+
 def test_change_password_incorrect_current_password(client, test_user):
     # First login to get a token
     login_response = client.post(

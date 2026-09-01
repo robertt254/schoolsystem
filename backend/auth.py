@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 
 from database import get_db
 import models
+import schemas
 from limiter import limiter
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -55,11 +56,6 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user_info: dict
-
-
-class PasswordChange(BaseModel):
-    current_password: str
-    new_password: str
 
 
 @router.post("/login", response_model=Token)
@@ -122,8 +118,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 @router.post("/change-password")
+@limiter.limit("10/minute")
 def change_password(
-    data: PasswordChange,
+    request: Request,
+    data: schemas.PasswordChange,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):

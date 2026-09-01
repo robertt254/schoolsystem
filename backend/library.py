@@ -165,6 +165,9 @@ def create_borrow(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    if current_user.role not in {"admin", "principal", "secretary"}:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     book = db.query(models.LibraryBook).filter(models.LibraryBook.id == borrow.book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -197,6 +200,9 @@ def return_book(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    if current_user.role not in {"admin", "principal", "secretary"}:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     borrow = db.query(models.LibraryBorrow).filter(models.LibraryBorrow.id == borrow_id).first()
     if not borrow:
         raise HTTPException(status_code=404, detail="Borrow record not found")

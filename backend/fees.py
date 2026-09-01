@@ -1073,6 +1073,15 @@ def collection_summary(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    # Revenue totals by term — same "what the school makes" sensitivity as
+    # dashboard net revenue, so the same restricted set (not the broader
+    # FINANCE_ROLES, which includes secretary for fee-entry purposes).
+    # Matches the frontend, which already gates /reports to admin/isFinance —
+    # this was previously unenforced server-side, reachable by any logged-in
+    # role via a direct API call regardless of what the UI hid.
+    if current_user.role not in {"admin", "principal", "accountant"}:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     from sqlalchemy import extract
     q = db.query(
         models.FeePayment.term,

@@ -70,7 +70,9 @@ class FeePayment(Base):
     # Numeric(10, 2) avoids floating-point rounding errors for currency
     amount = Column(Numeric(10, 2), nullable=False)
     payment_type = Column(String(50), nullable=False)
-    term = Column(String(10), nullable=False)
+    # Indexed: filtered in almost every balance/arrears query in fees.py,
+    # students.py and activities.py, always alongside student_id.
+    term = Column(String(10), nullable=False, index=True)
     payment_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     recorded_by = Column(String(100), nullable=False)
     # Sequential receipt number — format BNS-{YEAR}-{seq:05d}
@@ -85,7 +87,8 @@ class FeePayment(Base):
     # "Swimming", "Diary"). NULL for ordinary Tuition/Uniforms/Exam Fees
     # payments. Matches FeeStructure.fee_type and, for Transport/Co-curricular,
     # ActivityEnrollment.activity_name so arrears can be computed per activity.
-    activity = Column(String(100), nullable=True)
+    # Indexed: filtered (IS NULL, ==, or IN) in nearly every balance query.
+    activity = Column(String(100), nullable=True, index=True)
     # Voiding corrects a mistaken entry without erasing it — the row stays,
     # for accountability, but every arrears/collection calculation excludes
     # it (see fees._term_outstanding and friends, which all filter
@@ -94,6 +97,12 @@ class FeePayment(Base):
     voided_at = Column(DateTime(timezone=True), nullable=True)
     voided_by = Column(String(100), nullable=True)
     void_reason = Column(String(500), nullable=True)
+
+    __table_args__ = (
+        # The single most common filter combination across the codebase —
+        # (student_id, term) — every tuition balance query filters both.
+        Index('idx_fees_student_term', 'student_id', 'term'),
+    )
 
 
 class FeeStructure(Base):

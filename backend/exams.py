@@ -111,6 +111,9 @@ def get_grade_results(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    if current_user.role not in WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     students = db.query(models.Student).filter(
         models.Student.grade_level == grade_level,
         models.Student.is_deleted == False,
@@ -166,6 +169,9 @@ def get_student_results(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    if current_user.role not in WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     student = db.query(models.Student).filter(
         models.Student.id == student_id,
         models.Student.is_deleted == False,
@@ -204,6 +210,9 @@ def performance_summary(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    if current_user.role not in WRITE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     q = db.query(
         models.ExamResult.grade_level,
         models.ExamResult.subject,
