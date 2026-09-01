@@ -44,14 +44,51 @@ const filteredStudents = computed(() => {
 });
 
 // ── Zone catalogue & pricing (admin/principal set prices; everyone else sees them) ─
+const settingUpZones = ref(false);
+
 const loadZones = async () => {
     try {
-        const res = await api.getActivities(academicYear.value, 'Transport');
+        const res = await api.getActivities(parseInt(academicYear.value), 'Transport');
         zones.value = res.data;
-        if (!selectedZone.value && zones.value.length) {
-            selectedZone.value = zones.value[0].activity_name;
+        // The previously selected zone may not exist for a newly picked year —
+        // fall back to the first available zone (or clear it) rather than
+        // silently keeping a stale selection.
+        if (!zones.value.find(z => z.activity_name === selectedZone.value)) {
+            selectedZone.value = zones.value.length ? zones.value[0].activity_name : '';
         }
     } catch (e) { console.error(e); }
+};
+
+// One-click fix for the common case: no "Transport - Zone A/B" price rows
+// exist yet for this year (nobody has been through Fee Structure -> Load
+// Template -> Save Structure), so the zone dropdown has nothing to show.
+// Creates both zones at KES 0 — price them below once created.
+const setUpZones = async () => {
+    settingUpZones.value = true;
+    message.value = '';
+    const existing = new Set(zones.value.map(z => z.activity_name));
+    const missing = ['Transport - Zone A', 'Transport - Zone B'].filter(name => !existing.has(name));
+    let created = 0;
+    const failures = [];
+    // Independent requests — one already existing (e.g. a prior partial
+    // setup) must not stop the other from being created.
+    for (const name of missing) {
+        try {
+            await api.createFeeStructureEntry({
+                grade_level: 'General', term: 'Transport', fee_type: name,
+                amount: 0, academic_year: parseInt(academicYear.value),
+            });
+            created += 1;
+        } catch (e) {
+            failures.push(`${zoneShortLabel(name)} (${e.response?.data?.detail || 'failed'})`);
+        }
+    }
+    if (created) message.value = `${created} zone(s) created — set their fees below.`;
+    if (failures.length) message.value = `${message.value} Failed: ${failures.join(', ')}.`.trim();
+    if (!created && !failures.length) message.value = 'Both zones already exist.';
+    await loadZones();
+    await loadFeeStructureRow();
+    settingUpZones.value = false;
 };
 
 const feeStructureRow = ref(null);   // the actual FeeStructure row backing selectedZone, for editing
@@ -203,14 +240,23 @@ onMounted(load);
             <h1 class="text-3xl font-bold text-navy">Transport</h1>
             <p class="text-sm text-gray-500">Subscriptions, payments and arrears by zone — Zone A for students closer to the school, Zone B for those further away</p>
         </div>
-        <span class="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">{{ academicYear }}</span>
+        <input v-model.number="academicYear" @change="loadZones(); loadFeeStructureRow(); loadRoster();" type="number"
+               class="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800 w-24 text-center border-0 focus:ring-2 focus:ring-navy" />
     </div>
 
     <p v-if="message" class="text-sm font-medium" :class="message.includes('Failed') ? 'text-red-accent' : 'text-green-600'">{{ message }}</p>
 
     <!-- Zone selector + fee -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div v-if="zones.length === 0" class="text-sm text-gray-500">
+            <p>No transport zones configured yet for {{ academicYear }}.</p>
+            <button v-if="authStore.isAdmin" @click="setUpZones" :disabled="settingUpZones"
+                    class="mt-3 bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">
+                {{ settingUpZones ? 'Setting up…' : 'Set Up Zone A & Zone B' }}
+            </button>
+            <p v-else class="mt-1">Ask an admin or the principal to set them up.</p>
+        </div>
+        <div v-else class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Zone</label>
                 <select v-model="selectedZone" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
@@ -231,7 +277,6 @@ onMounted(load);
                 {{ selectedZoneInfo ? `${money(selectedZoneInfo.amount)} per term` : 'Ask an admin or the principal to set this zone\'s fee.' }}
             </div>
         </div>
-        <p v-if="zones.length === 0" class="text-xs text-gray-400 mt-2">No transport zones configured yet for {{ academicYear }} — load the template on the Fee Structure page to add Zone A / Zone B, then price them.</p>
     </div>
 
     <template v-if="selectedZone">
