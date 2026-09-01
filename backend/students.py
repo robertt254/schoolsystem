@@ -108,6 +108,7 @@ def get_class_roster(
     ).filter(
         models.FeePayment.student_id.in_(ids),
         models.FeePayment.activity.is_(None),
+        models.FeePayment.is_voided == False,
     ).group_by(models.FeePayment.student_id).all()
     paid = {r.student_id: float(r.total) for r in paid_rows}
 
@@ -316,6 +317,7 @@ def get_student_profile(
         db.query(func.sum(models.FeePayment.amount)).filter(
             models.FeePayment.student_id == student_id,
             models.FeePayment.activity.is_(None),
+            models.FeePayment.is_voided == False,
         ).scalar() or 0
     )
 
@@ -442,7 +444,8 @@ def deactivate_student(
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount))
         .filter(models.FeePayment.student_id == student_id,
-                models.FeePayment.activity.is_(None))
+                models.FeePayment.activity.is_(None),
+                models.FeePayment.is_voided == False)
         .scalar() or 0
     )
     total_expected = sum(

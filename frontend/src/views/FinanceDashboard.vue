@@ -29,8 +29,9 @@ const exportAccountability = () => {
 const exportPaymentLog = () => {
     exportCsv('payment_log.csv',
         [['receipt_number', 'Receipt'], ['student_name', 'Student'], ['admission_number', 'Admission No'],
-         ['grade_level', 'Grade'], ['payment_type', 'Type'], ['term', 'Term'],
-         ['amount', 'Amount'], ['payment_date', 'Date'], ['recorded_by', 'Recorded By'], ['status', 'Status']],
+         ['grade_level', 'Grade'], ['payment_type', 'Type'], ['activity', 'Activity/Item'], ['term', 'Term'],
+         ['amount', 'Amount'], ['payment_date', 'Date'], ['recorded_by', 'Recorded By'], ['status', 'Status'],
+         ['voided_by', 'Voided By'], ['void_reason', 'Void Reason']],
         paymentLog.value);
 };
 
@@ -138,13 +139,20 @@ const openReceipt = (p) => {
     receipt.value = p;
 };
 
-const deletePayment = async (p) => {
-    if (!window.confirm(`Delete payment ${p.receipt_number} of ${money(p.amount)}? This is audited.`)) return;
+const voidPayment = async (p) => {
+    const reason = window.prompt(
+        `Void payment ${p.receipt_number} of ${money(p.amount)}?\nThis stays on record for accountability, but no longer counts toward any balance or total.\n\nReason (required):`
+    );
+    if (reason === null) return;   // cancelled
+    if (reason.trim().length < 3) {
+        window.alert('A reason of at least 3 characters is required to void a payment.');
+        return;
+    }
     try {
-        await api.deleteFeePayment(p.id);
+        await api.voidFeePayment(p.id, reason.trim());
         loadDashboard();
     } catch (e) {
-        window.alert(e.response?.data?.detail || 'Failed to delete payment.');
+        window.alert(e.response?.data?.detail || 'Failed to void payment.');
     }
 };
 
@@ -293,21 +301,24 @@ onMounted(async () => {
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-                <tr v-for="p in paymentLog" :key="p.id" class="hover:bg-gray-50" :class="p.status === 'deleted' ? 'opacity-60' : ''">
+                <tr v-for="p in paymentLog" :key="p.id" class="hover:bg-gray-50" :class="p.status === 'voided' ? 'opacity-60' : ''">
                     <td class="px-6 py-3 whitespace-nowrap text-sm font-medium text-navy">{{ p.receipt_number || '—' }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{{ p.student_name }} <span class="text-xs text-gray-400">{{ p.admission_number }}</span></td>
-                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ p.payment_type }} · {{ p.term }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ p.payment_type }}<span v-if="p.activity"> · {{ p.activity }}</span> · {{ p.term }}</td>
                     <td class="px-6 py-3 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ money(p.amount) }}</td>
-                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ dateFmt(p.payment_date || p.deleted_at) }}</td>
+                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ dateFmt(p.payment_date) }}</td>
                     <td class="px-6 py-3 whitespace-nowrap">
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
                               :class="p.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
-                            {{ p.status === 'active' ? 'Paid' : 'Deleted' }}
+                            {{ p.status === 'active' ? 'Paid' : 'Voided' }}
+                        </span>
+                        <span v-if="p.status === 'voided'" class="block text-xs text-gray-400 mt-0.5">
+                            by {{ p.voided_by }} · {{ p.void_reason }}
                         </span>
                     </td>
                     <td class="px-6 py-3 whitespace-nowrap text-right text-sm font-medium">
-                        <button v-if="p.status === 'active'" @click="openReceipt(p)" class="text-navy hover:text-navy-light mx-1 font-bold underline">Receipt</button>
-                        <button v-if="authStore.isAdmin && p.status === 'active'" @click="deletePayment(p)" class="text-red-accent hover:text-red-hover mx-1 font-bold underline">Delete</button>
+                        <button @click="openReceipt(p)" class="text-navy hover:text-navy-light mx-1 font-bold underline">Receipt</button>
+                        <button v-if="authStore.isAdmin && p.status === 'active'" @click="voidPayment(p)" class="text-red-accent hover:text-red-hover mx-1 font-bold underline">Void</button>
                     </td>
                 </tr>
                 <tr v-if="paymentLog.length === 0">

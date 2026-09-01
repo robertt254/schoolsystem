@@ -39,7 +39,8 @@ def get_dashboard_stats(
     # misread as "no revenue").
     net_revenue = None
     if current_user.role in REVENUE_VISIBLE_ROLES:
-        total_fees     = float(db.query(func.sum(models.FeePayment.amount)).scalar() or 0)
+        total_fees     = float(db.query(func.sum(models.FeePayment.amount)).filter(
+            models.FeePayment.is_voided == False).scalar() or 0)
         total_payroll  = float(db.query(func.sum(models.Payroll.net_pay)).scalar() or 0)
         total_expenses = float(db.query(func.sum(models.Expense.amount)).scalar() or 0)
         net_revenue    = round(total_fees - total_payroll - total_expenses, 2)

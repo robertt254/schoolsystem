@@ -114,6 +114,13 @@ async def startup():
         "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS allocation TEXT",
         # Which subscribed activity (Transport/co-curricular) a payment is for.
         "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS activity VARCHAR(100)",
+        # Voided payments (mistaken entries corrected by admin/principal) —
+        # the row stays for accountability, excluded from arrears/collection math.
+        "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS is_voided BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ",
+        "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS voided_by VARCHAR(100)",
+        "ALTER TABLE fees        ADD COLUMN IF NOT EXISTS void_reason VARCHAR(500)",
+        "CREATE INDEX IF NOT EXISTS idx_fees_is_voided ON fees(is_voided)",
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS updated_at   TIMESTAMPTZ DEFAULT NOW()",
         # timetable & leave tables created via create_all; extra safety cols below
         "ALTER TABLE timetable       ADD COLUMN IF NOT EXISTS created_by   VARCHAR(100) NOT NULL DEFAULT 'system'",

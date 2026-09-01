@@ -250,8 +250,8 @@ export default {
   getPaymentLog(limit = 500) {
     return api.get('/api/fees/log', { params: { limit } });
   },
-  deleteFeePayment(paymentId) {
-    return api.delete(`/api/fees/${paymentId}`);
+  voidFeePayment(paymentId, reason) {
+    return api.post(`/api/fees/${paymentId}/void`, { reason });
   },
   getStudentPayments(studentId) {
     return api.get(`/api/fees/student/${studentId}`);

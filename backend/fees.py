@@ -91,6 +91,7 @@ def _get_rollover_credit(db: Session, student, up_to_term_num: int) -> float:
             models.FeePayment.student_id == student.id,
             models.FeePayment.term == t,
             models.FeePayment.activity.is_(None),
+            models.FeePayment.is_voided == False,
         ).scalar() or 0.0
         cumulative_paid += float(paid)
     return max(0.0, round(cumulative_paid - cumulative_expected, 2))
@@ -114,7 +115,9 @@ def _term_outstanding(db: Session, student, term: str, year_str: str) -> float:
     `activity.is_(None)` on every "paid" query below/elsewhere in this file
     excludes Transport/Co-curricular/Other payments (they set FeePayment.
     activity) from tuition's paid sum — otherwise a parent paying for
-    Swimming would appear to have paid down tuition arrears too."""
+    Swimming would appear to have paid down tuition arrears too.
+    `is_voided == False` excludes voided (corrected-mistake) payments —
+    see void_payment."""
     expected = _expected_fee_for_student(db, student, term)
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount))
@@ -122,6 +125,7 @@ def _term_outstanding(db: Session, student, term: str, year_str: str) -> float:
             models.FeePayment.student_id == student.id,
             models.FeePayment.term == term,
             models.FeePayment.activity.is_(None),
+            models.FeePayment.is_voided == False,
         )
         .scalar() or 0.0
     )
@@ -207,8 +211,8 @@ def _expected_from_map_for_student(fee_map: dict, student, term: str) -> float:
 
 def _paid_map(db: Session, student_ids: list) -> dict:
     """(student_id, term) → summed TUITION payments, in one grouped query.
-    Excludes Transport/Co-curricular/Other payments (activity IS NOT NULL) —
-    see _term_outstanding."""
+    Excludes Transport/Co-curricular/Other payments (activity IS NOT NULL)
+    and voided payments — see _term_outstanding."""
     if not student_ids:
         return {}
     rows = db.query(
@@ -218,6 +222,7 @@ def _paid_map(db: Session, student_ids: list) -> dict:
     ).filter(
         models.FeePayment.student_id.in_(student_ids),
         models.FeePayment.activity.is_(None),
+        models.FeePayment.is_voided == False,
     ).group_by(
         models.FeePayment.student_id, models.FeePayment.term
     ).all()
@@ -289,7 +294,7 @@ def get_smart_term(
         paid = float(
             db.query(func.sum(models.FeePayment.amount))
             .filter(models.FeePayment.student_id == student_id, models.FeePayment.term == term,
-                    models.FeePayment.activity.is_(None))
+                    models.FeePayment.activity.is_(None), models.FeePayment.is_voided == False)
             .scalar() or 0
         )
         # Mid-year joiners expect nothing before their admission term
@@ -510,26 +515,23 @@ def get_payment_log(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """
-    All fee payments (active + deleted) for the payment log statement.
-    Active records come from the FeePayment table.
-    Deleted records are reconstructed from the audit_logs (action=DELETE, resource=fee).
-    """
+    """All fee payments (active + voided) for the payment log statement.
+    Voided payments are real rows (see void_payment) — kept for
+    accountability rather than reconstructed from the audit log."""
     if current_user.role not in FINANCE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized to view fee log")
 
-    # ── Active payments ───────────────────────────────────────────────────────
-    active_rows = (
+    rows = (
         db.query(models.FeePayment, models.Student)
         .join(models.Student, models.FeePayment.student_id == models.Student.id)
         .order_by(models.FeePayment.payment_date.desc())
         .limit(limit)
         .all()
     )
-    result = [
+    return [
         {
             "id":               p.id,
-            "status":           "active",
+            "status":           "voided" if p.is_voided else "active",
             "student_id":       p.student_id,
             "student_name":     f"{s.first_name} {s.last_name}",
             "admission_number": s.admission_number,
@@ -537,103 +539,65 @@ def get_payment_log(
             "amount":           float(p.amount),
             "term":             p.term,
             "payment_type":     p.payment_type,
+            "activity":         p.activity,
             "payment_date":     p.payment_date.isoformat() if p.payment_date else None,
             "receipt_number":   p.receipt_number,
             "recorded_by":      p.recorded_by,
-            "deleted_by":       None,
-            "deleted_at":       None,
+            "voided_by":        p.voided_by,
+            "voided_at":        p.voided_at.isoformat() if p.voided_at else None,
+            "void_reason":      p.void_reason,
         }
-        for p, s in active_rows
+        for p, s in rows
     ]
 
-    # ── Deleted payments (reconstructed from audit log) ───────────────────────
-    deleted_rows = (
-        db.query(models.AuditLog, models.User)
-        .outerjoin(models.User, models.AuditLog.user_id == models.User.id)
-        .filter(
-            models.AuditLog.action   == "DELETE",
-            models.AuditLog.resource == "fee",
-        )
-        .order_by(models.AuditLog.timestamp.desc())
-        .all()
-    )
-    for log, deleter in deleted_rows:
-        try:
-            detail = json.loads(log.detail) if log.detail else {}
-        except Exception:
-            detail = {}
 
-        # Determine friendly deleter label
-        if deleter:
-            role_label = deleter.role.replace("_", " ").title()
-            deleted_by = f"{role_label} ({deleter.name})"
-        else:
-            deleted_by = "Unknown"
-
-        # Parse student label stored as "First Last (BNS-0001)"
-        student_raw = detail.get("student", "")
-        student_name = student_raw.split("(")[0].strip() if "(" in student_raw else student_raw
-        adm = student_raw[student_raw.find("(")+1:student_raw.find(")")] if "(" in student_raw else ""
-
-        try:
-            amount = float(detail.get("amount", 0))
-        except (ValueError, TypeError):
-            amount = 0.0
-
-        result.append({
-            "id":               f"del_{log.id}",
-            "status":           "deleted",
-            "student_id":       None,
-            "student_name":     student_name or "Unknown",
-            "admission_number": adm,
-            "grade_level":      "",
-            "amount":           amount,
-            "term":             detail.get("term", ""),
-            "payment_type":     detail.get("payment_type", ""),
-            "payment_date":     None,
-            "receipt_number":   detail.get("receipt_number"),
-            "recorded_by":      detail.get("recorded_by", ""),
-            "deleted_by":       deleted_by,
-            "deleted_at":       log.timestamp.isoformat() if log.timestamp else None,
-        })
-
-    # Sort combined list — active by payment_date, deleted by deleted_at (latest first)
-    def sort_key(r):
-        ts = r["payment_date"] or r["deleted_at"] or ""
-        return ts
-
-    result.sort(key=sort_key, reverse=True)
-    return result
-
-
-@router.delete("/{payment_id}", status_code=204)
-def delete_payment(
+@router.post("/{payment_id}/void", response_model=schemas.FeeResponse)
+def void_payment(
     payment_id: int,
+    payload: schemas.VoidPaymentRequest,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """Delete a wrongfully logged fee payment. Restricted to admin and principal. Deletion is audited."""
+    """Void a wrongly entered payment — a mistaken amount, wrong student,
+    wrong fee item, whatever the reason. Restricted to admin and principal.
+
+    Soft: the row stays (for accountability — a voided receipt is stamped
+    void, not torn out), but is_voided is excluded from every arrears/
+    collection calculation across fees.py, students.py and activities.py,
+    so the student's balance and every reporting total correct themselves
+    immediately. A reason is required and kept on the row itself, not just
+    in the audit log, so it's visible wherever the payment is shown."""
     if current_user.role not in {"admin", "principal"}:
-        raise HTTPException(status_code=403, detail="Only admin and principal can delete fee payments")
+        raise HTTPException(status_code=403, detail="Only admin and principal can void fee payments")
 
     payment = db.query(models.FeePayment).filter(models.FeePayment.id == payment_id).first()
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
+    if payment.is_voided:
+        raise HTTPException(status_code=400, detail="Payment is already voided")
 
     student = db.query(models.Student).filter(models.Student.id == payment.student_id).first()
     student_label = f"{student.first_name} {student.last_name} ({student.admission_number})" if student else f"student_id={payment.student_id}"
 
-    log_action(db, current_user.id, "DELETE", "fee", payment_id, {
+    payment.is_voided = True
+    payment.voided_at = datetime.now()
+    payment.voided_by = current_user.name
+    payment.void_reason = payload.reason
+
+    log_action(db, current_user.id, "UPDATE", "fee", payment_id, {
+        "voided": True,
         "receipt_number": payment.receipt_number,
         "amount":         str(payment.amount),
         "term":           payment.term,
         "payment_type":   payment.payment_type,
+        "activity":       payment.activity,
         "student":        student_label,
         "recorded_by":    payment.recorded_by,
-        "reason":         "manual_deletion_by_admin",
+        "reason":         payload.reason,
     })
-    db.delete(payment)
     db.commit()
+    db.refresh(payment)
+    return payment
 
 
 @router.get("/balance/{student_id}/{term}")
@@ -662,6 +626,7 @@ def get_student_balance(
             models.FeePayment.student_id == student_id,
             models.FeePayment.term == term,
             models.FeePayment.activity.is_(None),
+            models.FeePayment.is_voided == False,
         ).scalar() or 0.0
     )
 
@@ -732,7 +697,8 @@ def get_monthly_collection(
             func.extract("month", models.FeePayment.payment_date).label("month"),
             func.sum(models.FeePayment.amount).label("total"),
         )
-        .filter(func.extract("year", models.FeePayment.payment_date) == year)
+        .filter(func.extract("year", models.FeePayment.payment_date) == year,
+                models.FeePayment.is_voided == False)
         .group_by(func.extract("month", models.FeePayment.payment_date))
         .order_by(func.extract("month", models.FeePayment.payment_date))
         .all()
@@ -770,7 +736,10 @@ def get_defaulters(
         models.FeePayment.student_id,
         models.FeePayment.term,
         func.sum(models.FeePayment.amount).label("total"),
-    ).filter(models.FeePayment.activity.is_(None)).group_by(
+    ).filter(
+        models.FeePayment.activity.is_(None),
+        models.FeePayment.is_voided == False,
+    ).group_by(
         models.FeePayment.student_id, models.FeePayment.term
     ).all()
     paid_map = {(r.student_id, r.term): float(r.total) for r in pay_rows}
@@ -1110,7 +1079,7 @@ def collection_summary(
         func.sum(models.FeePayment.amount).label("total_paid"),
         func.count(models.FeePayment.id).label("num_payments"),
         func.count(func.distinct(models.FeePayment.student_id)).label("unique_students"),
-    )
+    ).filter(models.FeePayment.is_voided == False)
     if academic_year:
         try:
             q = q.filter(extract("year", models.FeePayment.payment_date) == int(academic_year))

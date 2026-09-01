@@ -50,13 +50,22 @@ onMounted(async () => {
         </div>
 
         <!-- Branded receipt -->
-        <div class="text-center border-b-2 border-navy pb-4 mb-4">
+        <div class="text-center border-b-2 border-navy pb-4 mb-4 relative">
+            <div v-if="payment.is_voided" class="absolute inset-0 flex items-center justify-center pointer-events-none" style="top: -1rem;">
+                <span class="text-5xl font-black text-red-accent opacity-25 -rotate-12 select-none">VOID</span>
+            </div>
             <div class="flex justify-center mb-2">
                 <SchoolBadge :size="72" />
             </div>
             <h2 class="text-2xl font-extrabold text-navy">THE BONA SCHOOL</h2>
             <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">In Truth We Excel</p>
             <p class="text-xs uppercase tracking-widest text-gray-500 mt-1">Official Fee Receipt</p>
+        </div>
+
+        <div v-if="payment.is_voided" class="bg-red-100 border border-red-accent text-red-accent text-sm rounded-md p-3 mb-4">
+            <p class="font-bold uppercase text-xs tracking-wide">This receipt has been voided</p>
+            <p class="mt-1">By {{ payment.voided_by }}<span v-if="payment.voided_at"> on {{ dateFmt(payment.voided_at) }}</span></p>
+            <p v-if="payment.void_reason" class="mt-1 italic">"{{ payment.void_reason }}"</p>
         </div>
 
         <div class="flex justify-between text-sm mb-4">

@@ -164,6 +164,13 @@ describe('fees & finance', () => {
     expect(mocks.instance.post).toHaveBeenCalledWith('/api/fees/', payment);
   });
 
+  it('voidFeePayment posts the reason to the void endpoint', () => {
+    api.voidFeePayment(42, 'entered wrong amount');
+    expect(mocks.instance.post).toHaveBeenCalledWith(
+      '/api/fees/42/void', { reason: 'entered wrong amount' },
+    );
+  });
+
   it('getAllocationPreview passes student, amount and current term as params', () => {
     api.getAllocationPreview(3, 2500, 'Term 2');
     expect(mocks.instance.get).toHaveBeenCalledWith(

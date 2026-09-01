@@ -34,8 +34,10 @@ const dateFmt = (iso) => iso ? new Date(iso).toLocaleDateString() : '—';
 
 const totalOutstanding = computed(() =>
     balances.value.reduce((s, b) => s + (b.outstanding_balance || 0), 0));
+// Voided payments stay listed below for accountability but no longer count
+// as money actually paid.
 const totalPaid = computed(() =>
-    payments.value.reduce((s, p) => s + Number(p.amount || 0), 0));
+    payments.value.filter(p => !p.is_voided).reduce((s, p) => s + Number(p.amount || 0), 0));
 
 const loadStudents = async () => {
     try {
@@ -70,6 +72,23 @@ const removeCarryForward = async (cf) => {
         generate();
     } catch (e) {
         window.alert(e.response?.data?.detail || 'Failed to delete carry-forward.');
+    }
+};
+
+const voidPayment = async (p) => {
+    const reason = window.prompt(
+        `Void payment ${p.receipt_number} of ${money(p.amount)}?\nThis stays on record for accountability, but no longer counts toward any balance or total.\n\nReason (required):`
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+        window.alert('A reason of at least 3 characters is required to void a payment.');
+        return;
+    }
+    try {
+        await api.voidFeePayment(p.id, reason.trim());
+        generate();
+    } catch (e) {
+        window.alert(e.response?.data?.detail || 'Failed to void payment.');
     }
 };
 
@@ -211,14 +230,15 @@ onMounted(loadStudents);
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type / Term</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Allocation</th>
                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider no-print">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                    <tr v-for="p in payments" :key="p.id" class="hover:bg-gray-50">
+                    <tr v-for="p in payments" :key="p.id" class="hover:bg-gray-50" :class="p.is_voided ? 'opacity-60' : ''">
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-navy">{{ p.receipt_number || '—' }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ dateFmt(p.payment_date) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ p.payment_type }} · {{ p.term }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ p.payment_type }}<span v-if="p.activity"> · {{ p.activity }}</span> · {{ p.term }}</td>
                         <td class="px-6 py-4 text-sm text-gray-500">
                             <template v-if="p.allocation && p.allocation.length">
                                 <span v-for="(a, i) in p.allocation" :key="i" class="mr-2 px-2 py-0.5 text-xs font-semibold rounded-full"
@@ -229,12 +249,20 @@ onMounted(loadStudents);
                             <span v-else>—</span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">{{ money(p.amount) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                  :class="p.is_voided ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'">
+                                {{ p.is_voided ? 'Voided' : 'Paid' }}
+                            </span>
+                            <span v-if="p.is_voided" class="block text-xs text-gray-400 mt-0.5">by {{ p.voided_by }} · {{ p.void_reason }}</span>
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium no-print">
-                            <button @click="openReceipt(p)" class="text-navy hover:text-navy-light font-bold underline">Receipt</button>
+                            <button @click="openReceipt(p)" class="text-navy hover:text-navy-light mx-1 font-bold underline">Receipt</button>
+                            <button v-if="authStore.isAdmin && !p.is_voided" @click="voidPayment(p)" class="text-red-accent hover:text-red-hover mx-1 font-bold underline">Void</button>
                         </td>
                     </tr>
                     <tr v-if="payments.length === 0">
-                        <td colspan="6" class="px-6 py-8 text-center text-gray-500 text-sm">No payments recorded for this student.</td>
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-500 text-sm">No payments recorded for this student.</td>
                     </tr>
                 </tbody>
             </table>

@@ -387,7 +387,8 @@ def term_accountability(
     fee_rows = db.query(
         models.FeePayment.term, func.sum(models.FeePayment.amount)
     ).filter(
-        extract("year", models.FeePayment.payment_date) == year
+        extract("year", models.FeePayment.payment_date) == year,
+        models.FeePayment.is_voided == False,
     ).group_by(models.FeePayment.term).all()
     for term, total in fee_rows:
         if term in data:

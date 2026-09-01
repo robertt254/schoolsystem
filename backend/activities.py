@@ -147,6 +147,7 @@ def get_student_activity_standing(
         ).filter(
             models.FeePayment.student_id == student_id,
             models.FeePayment.activity.in_([e.activity_name for e in enrollments]),
+            models.FeePayment.is_voided == False,
         ).group_by(models.FeePayment.activity).all()
         paid_map = {r[0]: float(r[1]) for r in rows}
 
@@ -309,6 +310,7 @@ def get_activity_roster(
         ).filter(
             models.FeePayment.student_id.in_(student_ids),
             models.FeePayment.activity == activity_name,
+            models.FeePayment.is_voided == False,
         ).group_by(models.FeePayment.student_id).all()
         paid_map = {r.student_id: float(r.total) for r in paid_rows}
 

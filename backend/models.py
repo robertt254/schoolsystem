@@ -86,6 +86,14 @@ class FeePayment(Base):
     # payments. Matches FeeStructure.fee_type and, for Transport/Co-curricular,
     # ActivityEnrollment.activity_name so arrears can be computed per activity.
     activity = Column(String(100), nullable=True)
+    # Voiding corrects a mistaken entry without erasing it — the row stays,
+    # for accountability, but every arrears/collection calculation excludes
+    # it (see fees._term_outstanding and friends, which all filter
+    # is_voided == False alongside the existing activity IS NULL filter).
+    is_voided = Column(Boolean, nullable=False, default=False, server_default="false", index=True)
+    voided_at = Column(DateTime(timezone=True), nullable=True)
+    voided_by = Column(String(100), nullable=True)
+    void_reason = Column(String(500), nullable=True)
 
 
 class FeeStructure(Base):

@@ -158,6 +158,10 @@ class FeeResponse(FeeBase):
     receipt_number: Optional[str] = None
     # Parsed from the FeePayment.allocation JSON column when present.
     allocation: Optional[List[FeeAllocationItem]] = None
+    is_voided: bool = False
+    voided_at: Optional[datetime] = None
+    voided_by: Optional[str] = None
+    void_reason: Optional[str] = None
 
     @field_validator("allocation", mode="before")
     @classmethod
@@ -171,6 +175,10 @@ class FeeResponse(FeeBase):
 
     class Config:
         from_attributes = True
+
+
+class VoidPaymentRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
 
 
 class TermDateItem(BaseModel):
