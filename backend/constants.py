@@ -29,15 +29,34 @@ _TERMLY_TEMPLATE = {
 }
 _ADMISSION_TEMPLATE = 1500
 _DAILY_UNDER2_TEMPLATE = 400
-_OTHER_TEMPLATE = {"School Diary": 500, "Ream Paper": 800, "Assessment Book": 350}
+# "Being Payment Of" items on the school's fee receipt book, besides tuition,
+# admission and daycare (which have their own categories above). No arrears
+# are tracked for these — like Uniforms, they're recorded as paid, not owed
+# (see fees.record_other_payment) — the amount here is just a price hint
+# shown when recording a payment.
+_OTHER_TEMPLATE = {
+    "Diary": 500, "Lunch": 0, "Computer": 0, "Examination": 0,
+    "Tour": 0, "Medical": 0, "Graduation": 0, "Miscellaneous": 0,
+    "Ream Paper": 800, "Assessment Book": 350,
+}
+# The school's actual co-curricular offering (per its fee receipt book).
+# French is compulsory for every student from Grade 1 onward — see
+# COMPULSORY_ACTIVITY_NAME below — everything else here is opt-in.
 _COCURRICULAR_TEMPLATE = {
-    "French (Grade 1)": 2000, "Skating": 3500, "Ballet": 3000, "Modern Dance": 3000,
-    "Swimming": 0, "Computer": 0, "Coding": 0, "Martial Art": 0, "Scouts": 0, "Football": 0,
+    "French": 2000, "Swimming": 0, "Coding": 0, "Martial Art": 0, "Journalism": 0, "Clubs": 0,
 }
 # Transport is optional and priced separately from tuition — students opt in
-# per ActivityEnrollment. Flat termly fee by default; a school running
-# distance-based routes can add further rows (e.g. "Transport - Route A").
-_TRANSPORT_TEMPLATE = {"Transport": 0}
+# per ActivityEnrollment, into whichever zone matches where they live. Zone A
+# is for students closer to the school, Zone B for those further away; each
+# zone is priced independently on the Fee Structure page.
+_TRANSPORT_TEMPLATE = {"Transport - Zone A": 0, "Transport - Zone B": 0}
+
+# French is compulsory for every student from Grade 1 through Grade 6 (not
+# Play Group/PP1/PP2) — students.py auto-subscribes every student in these
+# grades on admission and on promotion into Grade 1, and activities.py
+# refuses to let it be unsubscribed.
+COMPULSORY_ACTIVITY_NAME = "French"
+COMPULSORY_ACTIVITY_GRADES = {"Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"}
 
 # term-category labels for non-grade items (stored in FeeStructure.term)
 GENERAL_GRADE = "General"

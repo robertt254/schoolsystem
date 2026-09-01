@@ -15,13 +15,43 @@ from database import get_db
 import models, schemas, auth
 from audit import log_action
 from notifications import notify_payment
-from constants import GENERAL_GRADE, SUBSCRIPTION_CATEGORIES, CAT_TRANSPORT
+from constants import (
+    GENERAL_GRADE, SUBSCRIPTION_CATEGORIES, CAT_TRANSPORT,
+    COMPULSORY_ACTIVITY_NAME, COMPULSORY_ACTIVITY_GRADES,
+)
 from fees import _generate_receipt_number, TERM_ORDER, FINANCE_ROLES
 
 router = APIRouter(prefix="/api/activities", tags=["Activities & Transport"])
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def ensure_compulsory_enrollment(db: Session, student, academic_year: int,
+                                  enrolled_term: str = "Term 1", recorded_by: str = "system") -> bool:
+    """Subscribe a Grade 1-6 student to French if they aren't already —
+    called on admission, on promotion into Grade 1, and by the one-time
+    startup backfill in main.py. Idempotent: does nothing if the student
+    already has an (active or inactive) enrollment for the year. Returns
+    True if a new enrollment was created."""
+    if student.grade_level not in COMPULSORY_ACTIVITY_GRADES:
+        return False
+    existing = db.query(models.ActivityEnrollment).filter(
+        models.ActivityEnrollment.student_id == student.id,
+        models.ActivityEnrollment.activity_name == COMPULSORY_ACTIVITY_NAME,
+        models.ActivityEnrollment.academic_year == academic_year,
+    ).first()
+    if existing:
+        if not existing.is_active:
+            existing.is_active = True  # French can't stay dropped — reactivate
+        return False
+    db.add(models.ActivityEnrollment(
+        student_id=student.id,
+        activity_name=COMPULSORY_ACTIVITY_NAME,
+        academic_year=academic_year,
+        enrolled_term=enrolled_term or "Term 1",
+        recorded_by=recorded_by,
+    ))
+    return True
 
 def _activity_fee_map(db: Session, year: int) -> dict:
     """activity_name -> (category, unit_price) for a year, in one query."""
@@ -80,6 +110,63 @@ def list_activities(
         for name, (cat, amount) in sorted(fee_map.items())
         if not category or cat == category
     ]
+
+
+@router.get("/student/{student_id}/standing", response_model=list[schemas.StudentActivityStanding])
+def get_student_activity_standing(
+    student_id: int,
+    term: str = Query(...),
+    academic_year: int = Query(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Every activity (Transport zone + co-curricular) this student is
+    actively subscribed to, each with its arrears up to the given term —
+    everything the itemized fee-receipt form needs about one student's
+    activities in a single call instead of one round trip per activity."""
+    if current_user.role not in FINANCE_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    student = db.query(models.Student).filter(
+        models.Student.id == student_id, models.Student.is_deleted == False,
+    ).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    fee_map = _activity_fee_map(db, academic_year)
+    enrollments = db.query(models.ActivityEnrollment).filter(
+        models.ActivityEnrollment.student_id == student_id,
+        models.ActivityEnrollment.academic_year == academic_year,
+        models.ActivityEnrollment.is_active == True,
+    ).all()
+
+    paid_map = {}
+    if enrollments:
+        rows = db.query(
+            models.FeePayment.activity, func.sum(models.FeePayment.amount)
+        ).filter(
+            models.FeePayment.student_id == student_id,
+            models.FeePayment.activity.in_([e.activity_name for e in enrollments]),
+        ).group_by(models.FeePayment.activity).all()
+        paid_map = {r[0]: float(r[1]) for r in rows}
+
+    result = []
+    for e in enrollments:
+        category, unit_price = fee_map.get(e.activity_name, (None, 0.0))
+        expected = _activity_expected(unit_price, e.enrolled_term, term)
+        paid = paid_map.get(e.activity_name, 0.0)
+        result.append({
+            "enrollment_id": e.id,
+            "activity_name": e.activity_name,
+            "category": category or "",
+            "unit_price": unit_price,
+            "expected": expected,
+            "paid": round(paid, 2),
+            "outstanding": round(max(0.0, expected - paid), 2),
+            "compulsory": e.activity_name == COMPULSORY_ACTIVITY_NAME,
+        })
+    result.sort(key=lambda r: r["activity_name"])
+    return result
 
 
 # ── Enrollments (subscriptions) ──────────────────────────────────────────────
@@ -172,6 +259,8 @@ def deactivate_enrollment(
     row = db.query(models.ActivityEnrollment).filter(models.ActivityEnrollment.id == enrollment_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Enrollment not found")
+    if row.activity_name == COMPULSORY_ACTIVITY_NAME:
+        raise HTTPException(status_code=400, detail=f"{COMPULSORY_ACTIVITY_NAME} is compulsory and cannot be unsubscribed")
     row.is_active = False
     log_action(db, current_user.id, "UPDATE", "activity_enrollment", enrollment_id,
                {"unsubscribed": True, "activity": row.activity_name})

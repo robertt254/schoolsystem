@@ -10,6 +10,7 @@ import auth
 from audit import log_action
 from constants import CBC_GRADES
 from fees import _expected_fee_for_student, _expected_fee_map, _expected_from_map_for_student
+from activities import ensure_compulsory_enrollment
 
 router = APIRouter(prefix="/api/students", tags=["Students"])
 
@@ -98,11 +99,16 @@ def get_class_roster(
     def annual_expected_for(s) -> float:
         return sum(_expected_from_map_for_student(fee_map, s, t) for t in ["Term 1", "Term 2", "Term 3"])
 
-    # Batch: total paid per student (all terms)
+    # Batch: total TUITION paid per student (all terms) — activity IS NULL
+    # excludes Transport/Co-curricular/Other payments, which aren't tuition
+    # and would otherwise inflate this against a tuition-only expected figure.
     paid_rows = db.query(
         models.FeePayment.student_id,
         func.sum(models.FeePayment.amount).label("total"),
-    ).filter(models.FeePayment.student_id.in_(ids)).group_by(models.FeePayment.student_id).all()
+    ).filter(
+        models.FeePayment.student_id.in_(ids),
+        models.FeePayment.activity.is_(None),
+    ).group_by(models.FeePayment.student_id).all()
     paid = {r.student_id: float(r.total) for r in paid_rows}
 
     roster = []
@@ -173,6 +179,9 @@ def create_student(
     log_action(db, current_user.id, "CREATE", "student", new_student.id,
                {"admission_number": admission_number,
                 "first_name": new_student.first_name, "last_name": new_student.last_name})
+    # French is compulsory from Grade 1 onward — subscribe automatically.
+    ensure_compulsory_enrollment(db, new_student, data["admission_year"],
+                                  data["admission_term"], current_user.name)
     db.commit()
     db.refresh(new_student)
     return new_student
@@ -213,6 +222,8 @@ def bulk_import_students(
         log_action(db, current_user.id, "CREATE", "student", new_student.id,
                    {"admission_number": admission_number, "bulk_import": True,
                     "first_name": new_student.first_name, "last_name": new_student.last_name})
+        ensure_compulsory_enrollment(db, new_student, data["admission_year"],
+                                      data["admission_term"], current_user.name)
         created += 1
 
     db.commit()
@@ -303,7 +314,8 @@ def get_student_profile(
 
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount)).filter(
-            models.FeePayment.student_id == student_id
+            models.FeePayment.student_id == student_id,
+            models.FeePayment.activity.is_(None),
         ).scalar() or 0
     )
 
@@ -426,10 +438,11 @@ def deactivate_student(
     if not db_student:
         raise HTTPException(status_code=404, detail="Active student not found")
 
-    # Check outstanding balance across all terms
+    # Check outstanding TUITION balance across all terms
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount))
-        .filter(models.FeePayment.student_id == student_id)
+        .filter(models.FeePayment.student_id == student_id,
+                models.FeePayment.activity.is_(None))
         .scalar() or 0
     )
     total_expected = sum(
@@ -514,6 +527,10 @@ def promote_students(
                        {"from": student.grade_level, "to": next_grade})
             student.grade_level = next_grade
             promoted += 1
+            # A PP2 -> Grade 1 promotion crosses into compulsory-French
+            # territory — subscribe them for the new academic year, same as
+            # a fresh Grade 1+ admission.
+            ensure_compulsory_enrollment(db, student, datetime.now().year, "Term 1", current_user.name)
 
     db.commit()
     return {"promoted": promoted, "graduated": graduated}

@@ -241,6 +241,9 @@ export default {
   recordFeePayment(payment) {
     return api.post('/api/fees/', payment);
   },
+  recordOtherPayment(payment) {
+    return api.post('/api/fees/other', payment);
+  },
   recordBulkPayments(payments) {
     return api.post('/api/fees/bulk', payments);
   },
@@ -315,6 +318,9 @@ export default {
   getActivityRoster(activityName, term, academicYear) {
     return api.get(`/api/activities/${encodeURIComponent(activityName)}/roster`,
       { params: { term, ...(academicYear ? { academic_year: academicYear } : {}) } });
+  },
+  getStudentActivityStanding(studentId, term, academicYear) {
+    return api.get(`/api/activities/student/${studentId}/standing`, { params: { term, academic_year: academicYear } });
   },
   recordActivityPayment(payload) {
     return api.post('/api/activities/payments', payload);

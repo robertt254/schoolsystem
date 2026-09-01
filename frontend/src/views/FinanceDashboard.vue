@@ -1,8 +1,10 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
+import ItemizedFeeReceipt from '../components/ItemizedFeeReceipt.vue';
+import ItemizedReceiptModal from '../components/ItemizedReceiptModal.vue';
 import { exportCsv } from '../utils/csvExport';
 
 // Per-term accountability table (fees vs expenses vs payroll vs petty cash)
@@ -47,30 +49,22 @@ const monthly = ref([]);
 const maxMonthly = ref(1);
 const message = ref('');
 
-// Transport and co-curricular activities now have their own dashboards
-// (Finance → Transport / Co-curricular Activities), each with their own
-// arrears-aware payment recording — this form is fees only.
-const paymentTypes = ['Tuition', 'Uniforms', 'Exam Fees'];
 const newInvoice = ref({ student_id: '', term: '', total_amount: '' });
-const newPayment = ref({ invoice_id: '', amount: '', payment_type: 'Tuition', payment_date: '' });
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
 const dateFmt = (iso) => iso ? new Date(iso).toLocaleDateString() : '—';
 
-// Type-ahead search so either student picker can be found by name, admission
-// number or class instead of scrolling a long dropdown.
+// Type-ahead search so the invoice student picker can be found by name,
+// admission number or class instead of scrolling a long dropdown.
 const invoiceStudentSearch = ref('');
-const paymentStudentSearch = ref('');
-const filterStudents = (query) => {
-    const q = query.trim().toLowerCase();
+const filteredInvoiceStudents = computed(() => {
+    const q = invoiceStudentSearch.value.trim().toLowerCase();
     if (!q) return students.value;
     return students.value.filter(s =>
         `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) ||
         (s.admission_number || '').toLowerCase().includes(q) ||
         (s.grade_level || '').toLowerCase().includes(q));
-};
-const filteredInvoiceStudents = computed(() => filterStudents(invoiceStudentSearch.value));
-const filteredPaymentStudents = computed(() => filterStudents(paymentStudentSearch.value));
+});
 
 const loadDashboard = async () => {
     try {
@@ -128,75 +122,20 @@ const createInvoice = async () => {
     }
 };
 
-// Payments are applied waterfall-style by the backend: oldest arrears first,
-// the remainder to the current term.
+// receipt: single-payment receipts opened from the Payment Log below.
+// itemizedReceipt: the multi-line slip shown right after ItemizedFeeReceipt
+// records a batch of fee-receipt lines for one student.
 const receipt = ref(null);
+const itemizedReceipt = ref(null);
 
-const makePayment = async () => {
-    if(!newPayment.value.invoice_id || !newPayment.value.amount) return;
+const onItemizedRecorded = (data) => {
+    itemizedReceipt.value = data;
     message.value = '';
-    try {
-        const student = students.value.find(s => s.id === parseInt(newPayment.value.invoice_id));
-        const res = await api.recordFeePayment({
-            student_id: parseInt(newPayment.value.invoice_id),
-            amount: parseFloat(newPayment.value.amount),
-            payment_type: newPayment.value.payment_type,
-            term: currentTerm.value,
-            current_term: currentTerm.value,
-            // Backlog entry from paper records — blank means "now"
-            ...(newPayment.value.payment_date ? { payment_date: newPayment.value.payment_date } : {})
-        });
-        newPayment.value = { invoice_id: '', amount: '', payment_type: 'Tuition', payment_date: '' };
-        message.value = `Payment recorded — receipt ${res.data.receipt_number}.`;
-        // Show the branded receipt immediately for printing
-        receipt.value = {
-            ...res.data,
-            student_name: student ? `${student.first_name} ${student.last_name}` : `Student #${res.data.student_id}`,
-            admission_number: student?.admission_number || '',
-            grade_level: student?.grade_level || ''
-        };
-        loadDashboard();
-    } catch (e) {
-        console.error("Failed to process payment", e);
-        message.value = e.response?.data?.detail || 'Failed to process payment.';
-    }
-}
+    loadDashboard();
+};
 
 const openReceipt = (p) => {
     receipt.value = p;
-};
-
-// Bona's smart payment flow: when a student and amount are picked, preview how
-// the waterfall will split the payment (arrears first, remainder to this term).
-const allocationPreview = ref(null);
-const smartTerm = ref(null);
-
-watch(() => newPayment.value.invoice_id, async (sid) => {
-    allocationPreview.value = null;
-    smartTerm.value = null;
-    if (!sid) return;
-    try {
-        const res = await api.getSmartTerm(parseInt(sid), currentTerm.value);
-        smartTerm.value = res.data;
-    } catch (e) { console.error(e); }
-    previewAllocation();
-});
-
-let previewTimer = null;
-watch(() => newPayment.value.amount, () => {
-    clearTimeout(previewTimer);
-    previewTimer = setTimeout(previewAllocation, 400);
-});
-
-const previewAllocation = async () => {
-    allocationPreview.value = null;
-    const sid = parseInt(newPayment.value.invoice_id);
-    const amount = parseFloat(newPayment.value.amount);
-    if (!sid || !(amount > 0)) return;
-    try {
-        const res = await api.getAllocationPreview(sid, amount, currentTerm.value);
-        allocationPreview.value = res.data;
-    } catch (e) { console.error(e); }
 };
 
 const deletePayment = async (p) => {
@@ -242,82 +181,39 @@ onMounted(async () => {
 
     <p v-if="message" class="text-sm font-medium" :class="message.includes('Failed') ? 'text-red-accent' : 'text-green-600'">{{ message }}</p>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-        <!-- Invoicing Actions -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Generate Invoice</h2>
-            <form @submit.prevent="createInvoice" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Student</label>
-                    <input v-model="invoiceStudentSearch" type="text" placeholder="Search by name, admission no. or class…"
-                           class="mt-1 mb-2 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
-                    <select v-model="newInvoice.student_id" required class="block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
-                        <option value="">Select student ({{ filteredInvoiceStudents.length }} match{{ filteredInvoiceStudents.length === 1 ? '' : 'es' }})</option>
-                        <option v-for="s in filteredInvoiceStudents" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
-                    </select>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Term (1-3)</label>
-                        <input v-model="newInvoice.term" type="number" min="1" max="3" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Amount</label>
-                        <input v-model="newInvoice.total_amount" type="number" step="0.01" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm">
-                    </div>
-                </div>
-                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-navy hover:bg-navy-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-navy">
-                    Create Invoice
-                </button>
-            </form>
-        </div>
+    <!-- Itemized fee receipt — mirrors the school's paper receipt book -->
+    <div class="mt-8">
+        <ItemizedFeeReceipt :students="students" :current-term="currentTerm" :academic-year="academicYear"
+                             @recorded="onItemizedRecorded" />
+    </div>
 
-        <!-- Payments Actions -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Record Fees</h2>
-            <form @submit.prevent="makePayment" class="space-y-4">
+    <!-- Invoicing Actions -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-8 max-w-xl">
+        <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Generate Invoice</h2>
+        <form @submit.prevent="createInvoice" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Student</label>
+                <input v-model="invoiceStudentSearch" type="text" placeholder="Search by name, admission no. or class…"
+                       class="mt-1 mb-2 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
+                <select v-model="newInvoice.student_id" required class="block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
+                    <option value="">Select student ({{ filteredInvoiceStudents.length }} match{{ filteredInvoiceStudents.length === 1 ? '' : 'es' }})</option>
+                    <option v-for="s in filteredInvoiceStudents" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
+                </select>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Student</label>
-                    <input v-model="paymentStudentSearch" type="text" placeholder="Search by name, admission no. or class…"
-                           class="mt-1 mb-2 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm" />
-                    <select v-model="newPayment.invoice_id" required class="block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
-                        <option value="">Select student ({{ filteredPaymentStudents.length }} match{{ filteredPaymentStudents.length === 1 ? '' : 'es' }})</option>
-                        <option v-for="s in filteredPaymentStudents" :key="s.id" :value="s.id">{{ s.first_name }} {{ s.last_name }} ({{ s.admission_number }})</option>
-                    </select>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Payment Amount</label>
-                        <input v-model="newPayment.amount" type="number" step="0.01" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Payment Type</label>
-                        <select v-model="newPayment.payment_type" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-white focus:ring-navy focus:border-navy sm:text-sm">
-                            <option v-for="t in paymentTypes" :key="t">{{ t }}</option>
-                        </select>
-                    </div>
+                    <label class="block text-sm font-medium text-gray-700">Term (1-3)</label>
+                    <input v-model="newInvoice.term" type="number" min="1" max="3" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Payment Date (blank = today; set when entering old paper records)</label>
-                    <input v-model="newPayment.payment_date" type="date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm">
+                    <label class="block text-sm font-medium text-gray-700">Amount</label>
+                    <input v-model="newInvoice.total_amount" type="number" step="0.01" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-navy focus:border-navy sm:text-sm">
                 </div>
-                <div v-if="smartTerm && smartTerm.outstanding_balance > 0" class="text-xs text-gray-600 bg-gray-bg rounded-md p-2">
-                    Oldest unpaid term: <span class="font-semibold text-navy">{{ smartTerm.recommended_term }}</span> —
-                    outstanding <span class="font-semibold text-red-accent">{{ money(smartTerm.outstanding_balance) }}</span>
-                </div>
-                <div v-if="allocationPreview" class="text-xs text-gray-600 bg-gray-bg rounded-md p-2">
-                    This payment will apply as:
-                    <span v-for="(a, i) in allocationPreview.allocation" :key="i" class="ml-1 px-2 py-0.5 font-semibold rounded-full"
-                          :class="a.kind === 'arrears' ? 'bg-yellow-100 text-yellow-800' : a.kind === 'advance' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'">
-                        {{ a.term }}: {{ money(a.amount) }}
-                    </span>
-                </div>
-                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                    Record Fee Payment
-                </button>
-                <p class="text-xs text-gray-400">Payments clear oldest arrears first; the remainder goes to {{ currentTerm }}.</p>
-            </form>
-        </div>
+            </div>
+            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-navy hover:bg-navy-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-navy">
+                Create Invoice
+            </button>
+        </form>
     </div>
 
     <!-- Monthly collection -->
@@ -422,5 +318,6 @@ onMounted(async () => {
     </div>
 
     <ReceiptModal v-if="receipt" :payment="receipt" @close="receipt = null" />
+    <ItemizedReceiptModal v-if="itemizedReceipt" :data="itemizedReceipt" @close="itemizedReceipt = null" />
   </div>
 </template>

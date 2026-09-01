@@ -268,6 +268,31 @@ async def startup():
     except Exception as exc:
         logger.warning("Admin seed skipped: %s", exc)
 
+    # French became compulsory for every Grade 1-6 student — back-enroll the
+    # existing roster once. Idempotent (ensure_compulsory_enrollment skips
+    # anyone already enrolled for the year), safe to run on every boot.
+    try:
+        from datetime import datetime
+        from activities import ensure_compulsory_enrollment
+        from constants import COMPULSORY_ACTIVITY_GRADES
+        with SessionLocal() as db:
+            students = db.query(models.Student).filter(
+                models.Student.is_deleted == False,
+                models.Student.grade_level.in_(COMPULSORY_ACTIVITY_GRADES),
+            ).all()
+            year = datetime.now().year
+            enrolled = 0
+            for student in students:
+                admission_year = student.admission_year or year
+                enrolled_term = student.admission_term or "Term 1"
+                if ensure_compulsory_enrollment(db, student, admission_year, enrolled_term, "system"):
+                    enrolled += 1
+            if enrolled:
+                db.commit()
+                logger.info("Compulsory-French backfill: subscribed %d existing student(s).", enrolled)
+    except Exception as exc:
+        logger.warning("Compulsory-French backfill skipped: %s", exc)
+
     # ── Break-glass admin recovery ────────────────────────────────────────────
     # If the system administrator is locked out (forgotten/changed password),
     # set ADMIN_RECOVERY_PASSWORD in the environment and restart: the single

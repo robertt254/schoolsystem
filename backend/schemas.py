@@ -54,6 +54,7 @@ class PaymentType(str, Enum):
     transport = "Transport"
     exam_fees = "Exam Fees"
     cocurricular = "Co-curricular"
+    other = "Other"
 
 
 class StudentBase(BaseModel):
@@ -419,12 +420,37 @@ class ActivityRosterResponse(BaseModel):
     total_outstanding: float
 
 
+class StudentActivityStanding(BaseModel):
+    """One activity/transport zone a student is currently subscribed to,
+    with its arrears up to a given term — the building block for the
+    itemized fee-receipt form's Activity Fees / School Bus rows."""
+    enrollment_id: int
+    activity_name: str
+    category: str          # 'Transport' | 'Optional'
+    unit_price: float
+    expected: float
+    paid: float
+    outstanding: float
+    compulsory: bool
+
+
 class ActivityPaymentCreate(BaseModel):
     student_id: int
     activity_name: str = Field(..., min_length=1, max_length=100)
     amount: float = Field(..., gt=0)
     term: Term
     academic_year: int = Field(..., ge=2020, le=2100)
+    payment_date: Optional[datetime] = None  # backlog entry from paper records
+
+
+class OtherFeePaymentCreate(BaseModel):
+    """A fee-receipt line item with no arrears concept (Admission, Diary,
+    Lunch, Computer, Tour, Medical, Graduation, Miscellaneous, ...) — recorded
+    as paid, like Uniforms, not tracked against an expected/owed amount."""
+    student_id: int
+    fee_item: str = Field(..., min_length=1, max_length=100)
+    amount: float = Field(..., gt=0)
+    term: Term
     payment_date: Optional[datetime] = None  # backlog entry from paper records
 
 

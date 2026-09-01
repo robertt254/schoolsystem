@@ -80,9 +80,10 @@ class FeePayment(Base):
     # e.g. [{"term": "Term 1", "amount": 5000, "kind": "arrears"},
     #       {"term": "Term 2", "amount": 3000, "kind": "current"}]
     allocation = Column(Text, nullable=True)
-    # Which activity this payment applies to, when payment_type is Transport or
-    # Co-curricular (e.g. "Transport", "Swimming", "French (Grade 1)"). NULL for
-    # ordinary tuition/uniform/exam payments. Matches FeeStructure.fee_type and
+    # The specific fee-receipt line item this payment is for, when payment_type
+    # is Transport, Co-curricular or Other (e.g. "Transport - Zone A",
+    # "Swimming", "Diary"). NULL for ordinary Tuition/Uniforms/Exam Fees
+    # payments. Matches FeeStructure.fee_type and, for Transport/Co-curricular,
     # ActivityEnrollment.activity_name so arrears can be computed per activity.
     activity = Column(String(100), nullable=True)
 

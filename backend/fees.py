@@ -90,6 +90,7 @@ def _get_rollover_credit(db: Session, student, up_to_term_num: int) -> float:
         paid = db.query(func.sum(models.FeePayment.amount)).filter(
             models.FeePayment.student_id == student.id,
             models.FeePayment.term == t,
+            models.FeePayment.activity.is_(None),
         ).scalar() or 0.0
         cumulative_paid += float(paid)
     return max(0.0, round(cumulative_paid - cumulative_expected, 2))
@@ -108,13 +109,19 @@ def _get_carry_forward(db: Session, student_id: int, academic_year: str, term: s
 def _term_outstanding(db: Session, student, term: str, year_str: str) -> float:
     """Outstanding balance for one term, using the same definition as the
     student-balance endpoint (expected + carry-forward − paid − prior rollover).
-    Terms before a mid-year joiner's admission term expect nothing."""
+    Terms before a mid-year joiner's admission term expect nothing.
+
+    `activity.is_(None)` on every "paid" query below/elsewhere in this file
+    excludes Transport/Co-curricular/Other payments (they set FeePayment.
+    activity) from tuition's paid sum — otherwise a parent paying for
+    Swimming would appear to have paid down tuition arrears too."""
     expected = _expected_fee_for_student(db, student, term)
     total_paid = float(
         db.query(func.sum(models.FeePayment.amount))
         .filter(
             models.FeePayment.student_id == student.id,
             models.FeePayment.term == term,
+            models.FeePayment.activity.is_(None),
         )
         .scalar() or 0.0
     )
@@ -199,14 +206,19 @@ def _expected_from_map_for_student(fee_map: dict, student, term: str) -> float:
 
 
 def _paid_map(db: Session, student_ids: list) -> dict:
-    """(student_id, term) → summed payments, in one grouped query."""
+    """(student_id, term) → summed TUITION payments, in one grouped query.
+    Excludes Transport/Co-curricular/Other payments (activity IS NOT NULL) —
+    see _term_outstanding."""
     if not student_ids:
         return {}
     rows = db.query(
         models.FeePayment.student_id,
         models.FeePayment.term,
         func.sum(models.FeePayment.amount).label("total"),
-    ).filter(models.FeePayment.student_id.in_(student_ids)).group_by(
+    ).filter(
+        models.FeePayment.student_id.in_(student_ids),
+        models.FeePayment.activity.is_(None),
+    ).group_by(
         models.FeePayment.student_id, models.FeePayment.term
     ).all()
     return {(r.student_id, r.term): float(r.total) for r in rows}
@@ -276,7 +288,8 @@ def get_smart_term(
     for term in allowed_terms:
         paid = float(
             db.query(func.sum(models.FeePayment.amount))
-            .filter(models.FeePayment.student_id == student_id, models.FeePayment.term == term)
+            .filter(models.FeePayment.student_id == student_id, models.FeePayment.term == term,
+                    models.FeePayment.activity.is_(None))
             .scalar() or 0
         )
         # Mid-year joiners expect nothing before their admission term
@@ -392,6 +405,61 @@ def record_payment(
             student.guardian_phone,
             float(fee.amount),
             primary_term,
+            receipt,
+        )
+
+    return new_fee
+
+
+@router.post("/other", response_model=schemas.FeeResponse)
+def record_other_payment(
+    payload: schemas.OtherFeePaymentCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """Record a payment for a fee-receipt line item with no arrears concept
+    (Admission, Diary, Lunch, Computer, Tour, Medical, Graduation,
+    Miscellaneous, ...). Deliberately flat, like activities.record_activity_
+    payment — does NOT go through the tuition waterfall in record_payment,
+    which would misfile it against tuition arrears instead of just logging
+    what was paid for this specific item."""
+    if current_user.role not in {"accountant", "admin", "secretary", "principal"}:
+        raise HTTPException(status_code=403, detail="Not authorized to record payments")
+
+    student = db.query(models.Student).filter(
+        models.Student.id == payload.student_id,
+        models.Student.is_deleted == False,
+    ).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    receipt = _generate_receipt_number(db)
+    new_fee = models.FeePayment(
+        student_id=payload.student_id,
+        amount=payload.amount,
+        payment_type="Other",
+        term=payload.term.value,
+        activity=payload.fee_item,
+        recorded_by=current_user.name,
+        receipt_number=receipt,
+        **({"payment_date": payload.payment_date} if payload.payment_date else {}),
+    )
+    db.add(new_fee)
+    db.flush()
+    log_action(db, current_user.id, "CREATE", "fee", new_fee.id,
+               {"receipt": receipt, "amount": str(payload.amount), "student_id": payload.student_id,
+                "fee_item": payload.fee_item})
+    db.commit()
+    db.refresh(new_fee)
+
+    if student.guardian_phone:
+        background_tasks.add_task(
+            notify_payment,
+            f"{student.first_name} {student.last_name}",
+            student.guardian_phone,
+            float(payload.amount),
+            f"{payload.fee_item} ({payload.term.value})",
             receipt,
         )
 
@@ -593,6 +661,7 @@ def get_student_balance(
         db.query(func.sum(models.FeePayment.amount)).filter(
             models.FeePayment.student_id == student_id,
             models.FeePayment.term == term,
+            models.FeePayment.activity.is_(None),
         ).scalar() or 0.0
     )
 
@@ -695,12 +764,15 @@ def get_defaulters(
     def expected_fee(s, t: str) -> float:
         return _expected_from_map_for_student(fee_map, s, t)
 
-    # ── 2. Load all payments grouped by (student_id, term) ─────────────────
+    # ── 2. Load all TUITION payments grouped by (student_id, term) ─────────
+    # activity IS NULL excludes Transport/Co-curricular/Other — see _term_outstanding.
     pay_rows = db.query(
         models.FeePayment.student_id,
         models.FeePayment.term,
         func.sum(models.FeePayment.amount).label("total"),
-    ).group_by(models.FeePayment.student_id, models.FeePayment.term).all()
+    ).filter(models.FeePayment.activity.is_(None)).group_by(
+        models.FeePayment.student_id, models.FeePayment.term
+    ).all()
     paid_map = {(r.student_id, r.term): float(r.total) for r in pay_rows}
 
     # ── 3. Load carry-forwards for this academic year ──────────────────────

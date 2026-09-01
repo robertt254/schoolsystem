@@ -4,16 +4,18 @@ import api from '../api';
 import { useAuthStore } from '../stores/auth';
 import ReceiptModal from '../components/ReceiptModal.vue';
 
-const ACTIVITY_NAME = 'Transport';
 const authStore = useAuthStore();
 
 const academicYear = ref(new Date().getFullYear());
 const term = ref('Term 1');           // arrears computed up to and including this term
 const terms = ["Term 1", "Term 2", "Term 3"];
 
-const feeEntry = ref(null);           // the FeeStructure row for Transport this year, if any
-const feeAmountInput = ref('');
-const savingFee = ref(false);
+// Zone A is for students closer to the school, Zone B for those further
+// away — each priced and subscribed to independently.
+const zones = ref([]);                // [{activity_name: 'Transport - Zone A', amount, category}, ...]
+const selectedZone = ref('');
+const zoneAmountInput = ref('');
+const savingZone = ref(false);
 
 const roster = ref(null);
 const loadingRoster = ref(false);
@@ -26,6 +28,9 @@ const subscribeTerm = ref('Term 1');
 const subscribing = ref(false);
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
+const zoneShortLabel = (name) => (name || '').replace('Transport - ', '');
+
+const selectedZoneInfo = computed(() => zones.value.find(z => z.activity_name === selectedZone.value) || null);
 
 const filteredStudents = computed(() => {
     const q = studentSearch.value.trim().toLowerCase();
@@ -38,50 +43,64 @@ const filteredStudents = computed(() => {
         (s.grade_level || '').toLowerCase().includes(q));
 });
 
-// ── Transport fee (admin/principal set the price; everyone else sees it) ───
-const loadFeeEntry = async () => {
+// ── Zone catalogue & pricing (admin/principal set prices; everyone else sees them) ─
+const loadZones = async () => {
     try {
-        const res = await api.getFeeStructure();
-        feeEntry.value = res.data.find(r =>
-            r.grade_level === 'General' && r.term === 'Transport' &&
-            r.fee_type === 'Transport' && r.academic_year === parseInt(academicYear.value)) || null;
-        feeAmountInput.value = feeEntry.value ? feeEntry.value.amount : '';
+        const res = await api.getActivities(academicYear.value, 'Transport');
+        zones.value = res.data;
+        if (!selectedZone.value && zones.value.length) {
+            selectedZone.value = zones.value[0].activity_name;
+        }
     } catch (e) { console.error(e); }
 };
 
-const saveFee = async () => {
-    const amount = parseFloat(feeAmountInput.value);
-    if (!(amount >= 0)) return;
-    savingFee.value = true;
+const feeStructureRow = ref(null);   // the actual FeeStructure row backing selectedZone, for editing
+
+const loadFeeStructureRow = async () => {
+    if (!selectedZone.value) { feeStructureRow.value = null; return; }
+    try {
+        const res = await api.getFeeStructure();
+        feeStructureRow.value = res.data.find(r =>
+            r.grade_level === 'General' && r.term === 'Transport' &&
+            r.fee_type === selectedZone.value && r.academic_year === parseInt(academicYear.value)) || null;
+        zoneAmountInput.value = feeStructureRow.value ? feeStructureRow.value.amount : (selectedZoneInfo.value?.amount ?? '');
+    } catch (e) { console.error(e); }
+};
+
+const saveZoneFee = async () => {
+    const amount = parseFloat(zoneAmountInput.value);
+    if (!(amount >= 0) || !selectedZone.value) return;
+    savingZone.value = true;
     message.value = '';
     try {
-        if (feeEntry.value) {
-            await api.updateFeeStructureEntry(feeEntry.value.id, {
-                grade_level: 'General', term: 'Transport', fee_type: 'Transport',
+        if (feeStructureRow.value) {
+            await api.updateFeeStructureEntry(feeStructureRow.value.id, {
+                grade_level: 'General', term: 'Transport', fee_type: selectedZone.value,
                 amount, academic_year: parseInt(academicYear.value),
             });
         } else {
             await api.createFeeStructureEntry({
-                grade_level: 'General', term: 'Transport', fee_type: 'Transport',
+                grade_level: 'General', term: 'Transport', fee_type: selectedZone.value,
                 amount, academic_year: parseInt(academicYear.value),
             });
         }
-        message.value = 'Transport fee saved.';
-        await loadFeeEntry();
+        message.value = `${zoneShortLabel(selectedZone.value)} fee saved.`;
+        await loadZones();
+        await loadFeeStructureRow();
         loadRoster();
     } catch (e) {
-        message.value = e.response?.data?.detail || 'Failed to save the transport fee.';
+        message.value = e.response?.data?.detail || 'Failed to save the zone fee.';
     }
-    savingFee.value = false;
+    savingZone.value = false;
 };
 
 // ── Roster & arrears ─────────────────────────────────────────────────────────
 const loadRoster = async () => {
-    if (!feeEntry.value) { roster.value = null; return; }
+    if (!selectedZone.value) { roster.value = null; return; }
     loadingRoster.value = true;
     message.value = '';
     try {
-        const res = await api.getActivityRoster(ACTIVITY_NAME, term.value, academicYear.value);
+        const res = await api.getActivityRoster(selectedZone.value, term.value, academicYear.value);
         roster.value = res.data;
     } catch (e) {
         console.error(e);
@@ -92,6 +111,7 @@ const loadRoster = async () => {
 };
 
 watch(term, loadRoster);
+watch(selectedZone, () => { loadFeeStructureRow(); loadRoster(); });
 
 const load = async () => {
     try {
@@ -104,25 +124,26 @@ const load = async () => {
         const res = await api.getStudents();
         students.value = res.data;
     } catch (e) { console.error(e); }
-    await loadFeeEntry();
+    await loadZones();
+    await loadFeeStructureRow();
     loadRoster();
 };
 
 // ── Subscriptions ────────────────────────────────────────────────────────────
 const subscribe = async () => {
-    if (!subscribeStudentId.value) return;
+    if (!subscribeStudentId.value || !selectedZone.value) return;
     subscribing.value = true;
     message.value = '';
     try {
         await api.subscribeToActivity({
             student_id: parseInt(subscribeStudentId.value),
-            activity_name: ACTIVITY_NAME,
+            activity_name: selectedZone.value,
             academic_year: parseInt(academicYear.value),
             enrolled_term: subscribeTerm.value,
         });
         subscribeStudentId.value = '';
         studentSearch.value = '';
-        message.value = 'Student subscribed to transport.';
+        message.value = `Student subscribed to ${zoneShortLabel(selectedZone.value)}.`;
         loadRoster();
     } catch (e) {
         message.value = e.response?.data?.detail || 'Failed to subscribe student.';
@@ -153,7 +174,7 @@ const pay = async (entry) => {
     try {
         const res = await api.recordActivityPayment({
             student_id: entry.student_id,
-            activity_name: ACTIVITY_NAME,
+            activity_name: selectedZone.value,
             amount,
             term: term.value,
             academic_year: parseInt(academicYear.value),
@@ -180,34 +201,40 @@ onMounted(load);
     <div class="flex justify-between items-center">
         <div>
             <h1 class="text-3xl font-bold text-navy">Transport</h1>
-            <p class="text-sm text-gray-500">Subscriptions, payments and arrears for students who use school transport</p>
+            <p class="text-sm text-gray-500">Subscriptions, payments and arrears by zone — Zone A for students closer to the school, Zone B for those further away</p>
         </div>
         <span class="px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">{{ academicYear }}</span>
     </div>
 
     <p v-if="message" class="text-sm font-medium" :class="message.includes('Failed') ? 'text-red-accent' : 'text-green-600'">{{ message }}</p>
 
-    <!-- Transport fee -->
+    <!-- Zone selector + fee -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Transport Fee — {{ academicYear }}</h2>
-        <div v-if="authStore.isAdmin" class="flex gap-4 items-end">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Amount per term (KES)</label>
-                <input v-model="feeAmountInput" type="number" min="0" step="0.01"
-                       class="border border-gray-300 p-2 rounded-md w-48 focus:ring-navy focus:border-navy" />
+                <label class="block text-sm font-medium text-gray-700 mb-1">Zone</label>
+                <select v-model="selectedZone" class="border border-gray-300 p-2 rounded-md w-full bg-white focus:ring-navy focus:border-navy">
+                    <option v-for="z in zones" :key="z.activity_name" :value="z.activity_name">{{ zoneShortLabel(z.activity_name) }} ({{ money(z.amount) }}/term)</option>
+                </select>
             </div>
-            <button @click="saveFee" :disabled="savingFee || feeAmountInput === ''" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">
-                {{ savingFee ? 'Saving…' : (feeEntry ? 'Update Fee' : 'Set Fee') }}
-            </button>
-            <p v-if="!feeEntry" class="text-xs text-gray-400">No transport fee configured yet for {{ academicYear }} — set one to start subscribing students.</p>
+            <template v-if="authStore.isAdmin">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Amount per term (KES)</label>
+                    <input v-model="zoneAmountInput" type="number" min="0" step="0.01"
+                           class="border border-gray-300 p-2 rounded-md w-full focus:ring-navy focus:border-navy" />
+                </div>
+                <button @click="saveZoneFee" :disabled="savingZone || zoneAmountInput === '' || !selectedZone" class="bg-navy text-white px-6 py-2 rounded-md hover:bg-navy-light disabled:opacity-50">
+                    {{ savingZone ? 'Saving…' : (feeStructureRow ? 'Update Fee' : 'Set Fee') }}
+                </button>
+            </template>
+            <div v-else class="md:col-span-2 text-sm text-gray-500">
+                {{ selectedZoneInfo ? `${money(selectedZoneInfo.amount)} per term` : 'Ask an admin or the principal to set this zone\'s fee.' }}
+            </div>
         </div>
-        <div v-else>
-            <p v-if="feeEntry" class="text-2xl font-bold text-navy">{{ money(feeEntry.amount) }} <span class="text-sm font-normal text-gray-500">per term</span></p>
-            <p v-else class="text-sm text-gray-500 italic">No transport fee has been configured yet for {{ academicYear }} — ask an admin or the principal to set one.</p>
-        </div>
+        <p v-if="zones.length === 0" class="text-xs text-gray-400 mt-2">No transport zones configured yet for {{ academicYear }} — load the template on the Fee Structure page to add Zone A / Zone B, then price them.</p>
     </div>
 
-    <template v-if="feeEntry">
+    <template v-if="selectedZone">
       <!-- Term selector -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <label class="block text-sm font-medium text-gray-700 mb-1">Arrears up to term</label>
@@ -218,7 +245,7 @@ onMounted(load);
 
       <!-- Subscribe a student -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Subscribe a Student</h2>
+          <h2 class="text-xl font-bold text-navy mb-4 border-b pb-2">Subscribe a Student to {{ zoneShortLabel(selectedZone) }}</h2>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
@@ -243,11 +270,12 @@ onMounted(load);
                   {{ subscribing ? 'Subscribing…' : 'Subscribe' }}
               </button>
           </div>
+          <p class="text-xs text-gray-400 mt-2">Only students not already on this zone are listed — check the other zone if you can't find someone.</p>
       </div>
 
       <!-- Roster & arrears -->
       <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-          <h2 class="text-xl font-bold text-navy p-6 pb-3">Subscribers & Arrears</h2>
+          <h2 class="text-xl font-bold text-navy p-6 pb-3">{{ zoneShortLabel(selectedZone) }} — Subscribers & Arrears</h2>
           <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                   <tr>
@@ -287,7 +315,7 @@ onMounted(load);
                       </td>
                   </tr>
                   <tr v-if="!loadingRoster && (!roster || roster.entries.length === 0)">
-                      <td colspan="8" class="px-6 py-8 text-center text-gray-500 text-sm">No students subscribed to transport yet.</td>
+                      <td colspan="8" class="px-6 py-8 text-center text-gray-500 text-sm">No students subscribed to {{ zoneShortLabel(selectedZone) }} yet.</td>
                   </tr>
                   <tr v-if="loadingRoster">
                       <td colspan="8" class="px-6 py-8 text-center text-gray-400 text-sm">Loading…</td>
