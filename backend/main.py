@@ -195,6 +195,11 @@ async def startup():
         "CREATE INDEX IF NOT EXISTS idx_discipline_student  ON disciplinary_records(student_id)",
         "CREATE INDEX IF NOT EXISTS idx_audit_timestamp     ON audit_logs(timestamp DESC)",
         "CREATE INDEX IF NOT EXISTS idx_fees_payment_date   ON fees(payment_date DESC)",
+        # Security audit (2026-09-01): term/activity are filtered in nearly
+        # every balance query but were never indexed on already-deployed DBs.
+        "CREATE INDEX IF NOT EXISTS idx_fees_term           ON fees(term)",
+        "CREATE INDEX IF NOT EXISTS idx_fees_activity       ON fees(activity)",
+        "CREATE INDEX IF NOT EXISTS idx_fees_student_term   ON fees(student_id, term)",
         # Atomic sequence for receipt numbers — replaces race-prone Python counter
         "CREATE SEQUENCE IF NOT EXISTS receipt_number_seq START 1",
         # Advance the sequence past any receipts that were inserted before the sequence existed.

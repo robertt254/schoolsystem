@@ -125,6 +125,9 @@ def generate_report_card(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
+    if current_user.role not in {"teacher", "senior_teacher", "admin", "principal"}:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     student = db.query(models.Student).filter(
         models.Student.id == student_id,
         models.Student.is_deleted == False,
