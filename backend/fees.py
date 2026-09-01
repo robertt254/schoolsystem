@@ -717,12 +717,26 @@ def get_defaulters(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """Return all active students who have an outstanding balance for the given term."""
+    """Return all active students who have an outstanding balance for the
+    given term — tuition AND every Transport/co-curricular activity they're
+    subscribed to. A student can land here on activity arrears alone even
+    with tuition fully settled. Each defaulter carries `term_breakdown`
+    (tuition, per term) and `activity_breakdown` (one row per activity/zone
+    still owing) separately, plus a combined `total_arrears`/`outstanding_balance`
+    — see ItemizedFeeReceipt.vue and Defaulters.vue for how these are shown
+    categorized to the parent."""
     if current_user.role not in FINANCE_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized to view financials")
 
+    # Local import: activities.py imports back from fees.py at module load
+    # time (_generate_receipt_number, TERM_ORDER, FINANCE_ROLES), so a
+    # top-level import here would be circular — same pattern main.py already
+    # uses for ensure_compulsory_enrollment.
+    from activities import _activity_fee_map, _activity_expected
+
     current_term_num = TERM_ORDER.get(term, 1)
     year = datetime.now().year
+    activity_year = int(academic_year) if academic_year else year
 
     # ── 1. Load termly tuition structures for this year in one query ───────
     fee_map = _expected_fee_map(db)
@@ -758,16 +772,58 @@ def get_defaulters(
         ).all()
         cf_map = {(r.student_id, r.term): float(r.total) for r in cf_rows}
 
-    # ── 4. Compute balances in Python (no more per-student queries) ─────────
+    # ── 4. Load every active Transport/activity enrollment + its payments,
+    #      also in bulk — same shape as get_student_activity_standing but
+    #      for every subscribed student at once. ─────────────────────────
+    activity_fee_map = _activity_fee_map(db, activity_year)
+    enrollments = db.query(models.ActivityEnrollment).filter(
+        models.ActivityEnrollment.academic_year == activity_year,
+        models.ActivityEnrollment.is_active == True,
+    ).all()
+    enrollments_by_student: dict = {}
+    for e in enrollments:
+        enrollments_by_student.setdefault(e.student_id, []).append(e)
+
+    activity_paid_map: dict = {}
+    if enrollments_by_student:
+        act_rows = db.query(
+            models.FeePayment.student_id,
+            models.FeePayment.activity,
+            func.sum(models.FeePayment.amount).label("total"),
+        ).filter(
+            models.FeePayment.student_id.in_(enrollments_by_student.keys()),
+            models.FeePayment.activity.isnot(None),
+            models.FeePayment.is_voided == False,
+        ).group_by(
+            models.FeePayment.student_id, models.FeePayment.activity
+        ).all()
+        activity_paid_map = {(r.student_id, r.activity): float(r.total) for r in act_rows}
+
+    def activity_breakdown_for(student_id: int) -> list:
+        rows = []
+        for e in enrollments_by_student.get(student_id, []):
+            category, unit_price = activity_fee_map.get(e.activity_name, (None, 0.0))
+            expected_t = _activity_expected(unit_price, e.enrolled_term, term)
+            paid_t = activity_paid_map.get((student_id, e.activity_name), 0.0)
+            outstanding_t = round(max(0.0, expected_t - paid_t), 2)
+            if outstanding_t > 0:
+                rows.append({
+                    "activity_name": e.activity_name,
+                    "category": category or "",
+                    "expected": expected_t,
+                    "paid": round(paid_t, 2),
+                    "outstanding": outstanding_t,
+                })
+        rows.sort(key=lambda r: r["activity_name"])
+        return rows
+
+    # ── 5. Compute combined balances in Python (no more per-student queries) ─
     students = db.query(models.Student).filter(models.Student.is_deleted == False).all()
     prior_terms = [TERM_BY_NUM[n] for n in range(1, current_term_num)]
 
     defaulters = []
     for s in students:
         exp = expected_fee(s, term)
-        if exp == 0:
-            continue
-
         paid = paid_map.get((s.id, term), 0.0)
         carry_fwd = cf_map.get((s.id, term), 0.0)
 
@@ -776,42 +832,55 @@ def get_defaulters(
         cum_paid = sum(paid_map.get((s.id, t), 0.0) for t in prior_terms)
         rollover = max(0.0, round(cum_paid - cum_exp, 2))
 
-        balance = round(max(0.0, exp + carry_fwd - paid - rollover), 2)
-        if balance > 0:
-            # Full term-by-term breakdown up to and including the selected
-            # term (every term still owing something) — lets the Defaulters
-            # page print a one-page arrears invoice per student without any
-            # further round trips, same shape as the receipt/statement view.
-            term_breakdown = []
-            running_cum_exp = running_cum_paid = 0.0
-            for tnum in range(1, current_term_num + 1):
-                t = TERM_BY_NUM[tnum]
-                exp_t = expected_fee(s, t)
-                paid_t = paid_map.get((s.id, t), 0.0)
-                carry_t = cf_map.get((s.id, t), 0.0)
-                rollover_t = max(0.0, round(running_cum_paid - running_cum_exp, 2))
-                bal_t = round(max(0.0, exp_t + carry_t - paid_t - rollover_t), 2)
-                if bal_t > 0:
-                    term_breakdown.append({
-                        "term": t, "expected": exp_t, "paid": paid_t,
-                        "carry_forward": carry_t, "outstanding": bal_t,
-                    })
-                running_cum_exp += exp_t
-                running_cum_paid += paid_t
+        tuition_balance = round(max(0.0, exp + carry_fwd - paid - rollover), 2)
 
-            defaulters.append({
-                "student_id": s.id,
-                "student_name": f"{s.first_name} {s.last_name}",
-                "admission_number": s.admission_number,
-                "grade_level": s.grade_level,
-                "expected_fee": exp,
-                "carry_forward": carry_fwd,
-                "total_paid": paid,
-                "rollover_credit": rollover,
-                "outstanding_balance": balance,
-                "term_breakdown": term_breakdown,
-                "total_arrears": round(sum(x["outstanding"] for x in term_breakdown), 2),
-            })
+        # Full term-by-term tuition breakdown up to and including the selected
+        # term (every term still owing something) — lets the Defaulters page
+        # print a one-page arrears invoice per student without any further
+        # round trips, same shape as the receipt/statement view.
+        term_breakdown = []
+        running_cum_exp = running_cum_paid = 0.0
+        for tnum in range(1, current_term_num + 1):
+            t = TERM_BY_NUM[tnum]
+            exp_t = expected_fee(s, t)
+            paid_t = paid_map.get((s.id, t), 0.0)
+            carry_t = cf_map.get((s.id, t), 0.0)
+            rollover_t = max(0.0, round(running_cum_paid - running_cum_exp, 2))
+            bal_t = round(max(0.0, exp_t + carry_t - paid_t - rollover_t), 2)
+            if bal_t > 0:
+                term_breakdown.append({
+                    "term": t, "expected": exp_t, "paid": paid_t,
+                    "carry_forward": carry_t, "outstanding": bal_t,
+                })
+            running_cum_exp += exp_t
+            running_cum_paid += paid_t
+
+        tuition_arrears = round(sum(x["outstanding"] for x in term_breakdown), 2)
+        activity_rows = activity_breakdown_for(s.id)
+        activity_arrears = round(sum(r["outstanding"] for r in activity_rows), 2)
+        combined_total = round(tuition_arrears + activity_arrears, 2)
+
+        if combined_total <= 0:
+            continue
+
+        defaulters.append({
+            "student_id": s.id,
+            "student_name": f"{s.first_name} {s.last_name}",
+            "admission_number": s.admission_number,
+            "grade_level": s.grade_level,
+            "expected_fee": exp,
+            "carry_forward": carry_fwd,
+            "total_paid": paid,
+            "rollover_credit": rollover,
+            "tuition_arrears": tuition_arrears,
+            "term_breakdown": term_breakdown,
+            "activity_arrears": activity_arrears,
+            "activity_breakdown": activity_rows,
+            # Combined across tuition + every activity/transport zone —
+            # what actually matters to a parent as "the total".
+            "outstanding_balance": combined_total,
+            "total_arrears": combined_total,
+        })
     return defaulters
 
 

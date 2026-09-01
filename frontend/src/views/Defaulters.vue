@@ -24,10 +24,12 @@ const load = async () => {
 };
 
 const exportCsv = () => {
-    const header = 'Admission No,Student,Grade,Expected,Paid,Outstanding\n';
-    const body = defaulters.value.map(d =>
-        `${d.admission_number},"${d.student_name}",${d.grade_level},${d.expected_fee},${d.total_paid},${d.outstanding_balance}`
-    ).join('\n');
+    const header = 'Admission No,Student,Grade,Tuition Arrears,Activity/Transport Arrears,Total Outstanding,Breakdown\n';
+    const body = defaulters.value.map(d => {
+        const breakdown = (d.activity_breakdown || [])
+            .map(a => `${a.activity_name}: ${a.outstanding}`).join('; ');
+        return `${d.admission_number},"${d.student_name}",${d.grade_level},${d.tuition_arrears ?? d.outstanding_balance},${d.activity_arrears ?? 0},${d.outstanding_balance},"${breakdown}"`;
+    }).join('\n');
     const blob = new Blob([header + body], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -100,9 +102,8 @@ onMounted(async () => {
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Adm No.</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Expected</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owing On</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Outstanding</th>
                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
             </thead>
@@ -113,8 +114,17 @@ onMounted(async () => {
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">{{ d.grade_level }}</span>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{{ money(d.expected_fee + (d.carry_forward || 0)) }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{{ money(d.total_paid + (d.rollover_credit || 0)) }}</td>
+                    <td class="px-6 py-4 text-sm">
+                        <div class="flex flex-wrap gap-1 max-w-xs">
+                            <span v-if="(d.tuition_arrears ?? 0) > 0" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-accent whitespace-nowrap">
+                                Tuition: {{ money(d.tuition_arrears) }}
+                            </span>
+                            <span v-for="a in d.activity_breakdown" :key="a.activity_name"
+                                  class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 whitespace-nowrap">
+                                {{ a.activity_name }}: {{ money(a.outstanding) }}
+                            </span>
+                        </div>
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-red-accent">{{ money(d.outstanding_balance) }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
                         <button @click="printInvoice(d)" class="text-navy hover:text-navy-light font-bold underline">Invoice</button>
@@ -122,7 +132,7 @@ onMounted(async () => {
                     </td>
                 </tr>
                 <tr v-if="loaded && defaulters.length === 0">
-                    <td colspan="7" class="px-6 py-8 text-center text-gray-500 text-sm">No defaulters for {{ term }}. 🎉</td>
+                    <td colspan="6" class="px-6 py-8 text-center text-gray-500 text-sm">No defaulters for {{ term }}. 🎉</td>
                 </tr>
             </tbody>
         </table>
@@ -160,7 +170,8 @@ onMounted(async () => {
                 </div>
             </div>
 
-            <table class="min-w-full divide-y divide-gray-200 mb-2 text-xs">
+            <p v-if="d.term_breakdown && d.term_breakdown.length" class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Tuition</p>
+            <table v-if="d.term_breakdown && d.term_breakdown.length" class="min-w-full divide-y divide-gray-200 mb-2 text-xs">
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-2 py-1 text-left font-medium text-gray-500 uppercase tracking-wider">Term</th>
@@ -176,14 +187,42 @@ onMounted(async () => {
                         <td class="px-2 py-1 text-right text-gray-500">{{ money(row.paid) }}</td>
                         <td class="px-2 py-1 text-right font-bold text-red-accent">{{ money(row.outstanding) }}</td>
                     </tr>
-                    <tr v-if="!d.term_breakdown || d.term_breakdown.length === 0">
-                        <td colspan="4" class="px-2 py-2 text-center text-gray-500">{{ money(d.outstanding_balance) }} outstanding for {{ term }}.</td>
+                    <tr>
+                        <td colspan="3" class="px-2 py-1 text-right font-semibold text-navy">Tuition subtotal</td>
+                        <td class="px-2 py-1 text-right font-bold text-red-accent">{{ money(d.tuition_arrears) }}</td>
                     </tr>
                 </tbody>
             </table>
 
+            <p v-if="d.activity_breakdown && d.activity_breakdown.length" class="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Transport & Activities</p>
+            <table v-if="d.activity_breakdown && d.activity_breakdown.length" class="min-w-full divide-y divide-gray-200 mb-2 text-xs">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-2 py-1 text-left font-medium text-gray-500 uppercase tracking-wider">Activity</th>
+                        <th class="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Expected</th>
+                        <th class="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Paid</th>
+                        <th class="px-2 py-1 text-right font-medium text-gray-500 uppercase tracking-wider">Arrears</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr v-for="a in d.activity_breakdown" :key="a.activity_name">
+                        <td class="px-2 py-1 font-medium text-navy">{{ a.activity_name }}</td>
+                        <td class="px-2 py-1 text-right text-gray-500">{{ money(a.expected) }}</td>
+                        <td class="px-2 py-1 text-right text-gray-500">{{ money(a.paid) }}</td>
+                        <td class="px-2 py-1 text-right font-bold text-red-accent">{{ money(a.outstanding) }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="px-2 py-1 text-right font-semibold text-navy">Transport/Activities subtotal</td>
+                        <td class="px-2 py-1 text-right font-bold text-red-accent">{{ money(d.activity_arrears) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p v-if="(!d.term_breakdown || !d.term_breakdown.length) && (!d.activity_breakdown || !d.activity_breakdown.length)"
+               class="text-xs text-gray-500 text-center py-2">{{ money(d.outstanding_balance) }} outstanding for {{ term }}.</p>
+
             <div class="flex justify-between items-center border-t-2 border-b-2 border-navy py-1.5 mb-3">
-                <span class="font-bold text-navy uppercase text-xs">Total Arrears</span>
+                <span class="font-bold text-navy uppercase text-xs">Grand Total Arrears</span>
                 <span class="text-lg font-extrabold text-red-accent">{{ money(d.total_arrears ?? d.outstanding_balance) }}</span>
             </div>
 

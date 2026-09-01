@@ -38,6 +38,7 @@ const selectedStudent = computed(() =>
     props.students.find(s => s.id === parseInt(selectedStudentId.value)) || null);
 
 const money = (v) => `KES ${Number(v || 0).toLocaleString()}`;
+const round2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 // "Being Payment Of" — fixed items besides Tuition/Examination, matching the
 // receipt book. Price hints come from the Fee Structure page when set.
@@ -155,18 +156,40 @@ const submit = async () => {
     if (recorded.length) {
         message.value = `Recorded ${recorded.length} line(s) totalling ${money(recorded.reduce((s, r) => s + r.amount, 0))}.`;
         if (failed.length) message.value += ` Could not record: ${failed.join(', ')}.`;
-        // Re-fetch the post-payment tuition balance so the printed receipt's
-        // "Balance" line reflects what was just paid.
+        // Re-fetch the post-payment tuition + activity/transport arrears so
+        // the printed receipt's "Balance" section shows what's still owed,
+        // categorized per activity, plus one grand total — not just tuition.
+        const year = parseInt(props.academicYear);
         let balanceAfter = tuitionBalance.value;
+        let standingAfter = standing.value;
         try {
-            balanceAfter = (await api.getStudentFeeBalance(selectedStudentId.value, props.currentTerm)).data;
-        } catch (e) { /* keep the pre-payment figure */ }
+            const [balRes, standingRes] = await Promise.all([
+                api.getStudentFeeBalance(selectedStudentId.value, props.currentTerm),
+                api.getStudentActivityStanding(selectedStudentId.value, props.currentTerm, year),
+            ]);
+            balanceAfter = balRes.data;
+            standingAfter = standingRes.data;
+        } catch (e) { /* keep the pre-payment figures */ }
+
+        const balanceBreakdown = [];
+        if ((balanceAfter?.outstanding_balance ?? 0) > 0) {
+            balanceBreakdown.push({ label: 'Tuition', outstanding: balanceAfter.outstanding_balance });
+        }
+        for (const a of (standingAfter || [])) {
+            if (a.outstanding > 0) {
+                balanceBreakdown.push({ label: a.category === 'Transport' ? a.activity_name : `${a.activity_name} (Activity)`, outstanding: a.outstanding });
+            }
+        }
+        const totalArrears = round2(balanceBreakdown.reduce((s, b) => s + b.outstanding, 0));
+
         emit('recorded', {
             student: selectedStudent.value,
             date: paymentDate.value || new Date().toISOString(),
             term: props.currentTerm,
             lines: recorded,
             balance: balanceAfter?.outstanding_balance ?? null,
+            balanceBreakdown,
+            totalArrears,
         });
         loadStudentContext();
     } else if (failed.length) {

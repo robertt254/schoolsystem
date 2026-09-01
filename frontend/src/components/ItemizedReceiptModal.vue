@@ -5,7 +5,8 @@ import { printElement } from '../utils/printFrame';
 
 const props = defineProps({
     // { student: {first_name,last_name,admission_number,grade_level}, date,
-    //   term, lines: [{label, amount, receipt_number}], balance }
+    //   term, lines: [{label, amount, receipt_number}], balance,
+    //   balanceBreakdown: [{label, outstanding}], totalArrears }
     data: { type: Object, required: true },
 });
 const emit = defineEmits(['close']);
@@ -67,10 +68,20 @@ const printReceipt = () => printElement(receiptRoot.value, `Receipt ${receiptNum
             <span class="text-2xl font-extrabold text-navy">{{ money(total) }}</span>
         </div>
 
-        <div v-if="data.balance !== null" class="flex justify-between items-center bg-gray-bg rounded-md p-3 mb-4 text-sm">
+        <div v-if="data.balanceBreakdown && data.balanceBreakdown.length" class="bg-gray-bg rounded-md p-3 mb-4 text-sm">
+            <p class="text-gray-500 font-semibold uppercase text-xs tracking-wide mb-1.5">Outstanding Arrears — {{ data.term }}</p>
+            <div v-for="(b, i) in data.balanceBreakdown" :key="i" class="flex justify-between py-0.5">
+                <span class="text-gray-700">{{ b.label }}</span>
+                <span class="font-semibold text-red-accent">{{ money(b.outstanding) }}</span>
+            </div>
+            <div class="flex justify-between items-center border-t border-navy mt-1.5 pt-1.5">
+                <span class="font-bold text-navy text-xs uppercase">Total Arrears</span>
+                <span class="font-extrabold text-red-accent">{{ money(data.totalArrears) }}</span>
+            </div>
+        </div>
+        <div v-else-if="data.balance !== null && data.balance !== undefined" class="flex justify-between items-center bg-gray-bg rounded-md p-3 mb-4 text-sm">
             <span class="text-gray-600">Balance — {{ data.term }}</span>
-            <span v-if="data.balance > 0" class="font-bold text-red-accent">{{ money(data.balance) }}</span>
-            <span v-else class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Fully settled</span>
+            <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Fully settled</span>
         </div>
 
         <div class="text-xs text-gray-500 border-t pt-3 flex justify-between">
